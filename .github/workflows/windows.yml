@@ -1,0 +1,54 @@
+name: Windows build
+
+on:
+  push:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch:
+    inputs:
+      attach_to_tag:
+        description: "Tag de release à laquelle joindre le zip (ex. v1.0.2). Vide = rien n'est publié."
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write   # uniquement pour joindre le zip à une release existante
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S windows -B build -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path windows/CMakeLists.txt -Pattern 'project\(SimplePlug VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          $name = "SimplePlug-$ver-windows-x64"
+          New-Item -ItemType Directory -Path "dist/$name" | Out-Null
+          Copy-Item build/SimplePlug_artefacts/Release/SimplePlug.exe "dist/$name/"
+          Copy-Item windows/README.md, windows/LICENSE "dist/$name/"
+          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
+          "ZIP=dist/$name.zip" >> $env:GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SimplePlug-windows-x64
+          path: dist/*.zip
+
+      - name: Joindre à la release
+        if: ${{ inputs.attach_to_tag != '' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.attach_to_tag }}
+        run: gh release upload "$env:TAG" "$env:ZIP" --clobber
