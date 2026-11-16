@@ -3,6 +3,8 @@
 Hôte minimal pour **un seul plugin AU** (effet) en **2 entrées / 2 sorties**, pour macOS.
 Seuls réglages : interface audio, taille de buffer et fréquence d'échantillonnage.
 
+> **Windows** : voir [windows/README.md](windows/README.md) (hôte d'un plugin VST3, zip dans les *Releases*).
+
 ## Installation
 
 ### 1. Prérequis
