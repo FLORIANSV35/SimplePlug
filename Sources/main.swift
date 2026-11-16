@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let pluginPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let latencyLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
+    private let loadGauge = NSLevelIndicator()
+    private let loadLabel = NSTextField(labelWithString: "")
+    private var meterTimer: Timer?
+    private var shownLoad = 0.0, peakHold = 0.0, peakHoldSince = 0.0
     private let pluginContainer = NSView()
     private var containerWidth: NSLayoutConstraint!
     private var containerHeight: NSLayoutConstraint!
@@ -37,6 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         refreshInterfaces()
         refreshPlugins()
         HAL.observeDeviceList { [weak self] in self?.devicesChanged() }
+        meterTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateMeter() }
+        }
 
         Task {
             micDenied = !(await AVCaptureDevice.requestAccess(for: .audio))
@@ -101,9 +108,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let bufferRow = NSStackView(views: [bufferPopup, latencyLabel])
         bufferRow.spacing = 12
 
+        loadGauge.levelIndicatorStyle = .continuousCapacity
+        loadGauge.minValue = 0
+        loadGauge.maxValue = 1
+        loadGauge.warningValue = 0.7
+        loadGauge.criticalValue = 0.9
+        loadGauge.widthAnchor.constraint(equalToConstant: 170).isActive = true
+        loadGauge.heightAnchor.constraint(equalToConstant: 14).isActive = true
+        loadLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        loadLabel.textColor = .secondaryLabelColor
+        loadLabel.toolTip = "Temps de calcul / durée du buffer. Au-delà de 100 %, l'audio craque (« dépassement »)."
+        loadGauge.toolTip = loadLabel.toolTip
+        let loadRow = NSStackView(views: [loadGauge, loadLabel])
+        loadRow.spacing = 10
+
         let grid = NSGridView(views: [
             [label("Interface audio"), devicePopup],
             [label("Buffer"), bufferRow],
+            [label("Charge buffer"), loadRow],
             [label("Fréquence"), ratePopup],
             [label("Plugin AU"), pluginPopup],
         ])
@@ -233,6 +255,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             latencyLabel.stringValue = ""
             setStatus(error.localizedDescription, error: true)
         }
+    }
+
+    /// Jauge de charge : montée immédiate, descente lissée ; le pic est maintenu 1,5 s.
+    private func updateMeter() {
+        guard engine.isRunning else {
+            loadGauge.doubleValue = 0
+            loadLabel.stringValue = ""
+            shownLoad = 0
+            return
+        }
+        guard let load = engine.readLoad() else { return }
+        shownLoad = max(load.average, shownLoad * 0.85)
+        let now = ProcessInfo.processInfo.systemUptime
+        if load.peak >= peakHold || now - peakHoldSince > 1.5 {
+            peakHold = load.peak
+            peakHoldSince = now
+        }
+        loadGauge.doubleValue = min(shownLoad, 1)
+
+        var text = String(format: "%3.0f %%  (pic %3.0f %%)", shownLoad * 100, peakHold * 100)
+        let overloads = engine.overloads
+        if overloads > 0 { text += "  ⚠︎ \(overloads) dépassement\(overloads > 1 ? "s" : "")" }
+        loadLabel.stringValue = text
+        loadLabel.textColor = overloads > 0 ? .systemRed : .secondaryLabelColor
     }
 
     private func setStatus(_ text: String, error: Bool) {

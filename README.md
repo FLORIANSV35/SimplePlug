@@ -52,6 +52,9 @@ cp -R build/SimplePlug.app /Applications/
 
 1. Choisis ton **interface audio** (au moins 2 in / 2 out ; canaux 1-2 utilisés).
 2. Règle le **buffer** et la **fréquence** (la latence aller-retour approximative s'affiche).
+   La jauge **Charge buffer** montre le temps de calcul par rapport à la durée d'un buffer :
+   moyenne, pic récent, et nombre de **dépassements** (au-delà de 100 %, l'audio craque).
+   Si elle monte trop haut, augmente le buffer.
 3. Choisis le **plugin AU** : son interface s'affiche dans la fenêtre.
 
 Tous les réglages, y compris l'état du plugin, sont mémorisés.

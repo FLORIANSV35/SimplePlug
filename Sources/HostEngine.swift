@@ -24,8 +24,28 @@ final class HostEngine {
     /// Compteurs de diagnostic (écrits par le thread audio, lus pour debug).
     struct Stats { var callbacks = 0, inputErrors = 0, pluginErrors = 0
                    var lastInputError: OSStatus = 0, lastPluginError: OSStatus = 0
-                   var inputPeak: Float = 0, outputPeak: Float = 0, lastFrames: UInt32 = 0 }
+                   var lastFrames: UInt32 = 0 }
     private(set) var stats = Stats()
+
+    // Jauge de charge : temps passé dans le callback / durée du buffer (1.0 = 100 % = coupure).
+    // Écrit par le thread audio, lu et remis à zéro par l'interface (valeurs simples, course sans danger).
+    private var currentRate: Double = 48000
+    private var loadSum: Double = 0, loadMax: Double = 0, loadCount = 0
+    private(set) var overloads = 0
+    private static let secondsPerTick: Double = {
+        var t = mach_timebase_info_data_t()
+        mach_timebase_info(&t)
+        return Double(t.numer) / Double(t.denom) * 1e-9
+    }()
+
+    /// Charge moyenne et crête depuis le dernier appel (nil s'il n'y a eu aucun buffer).
+    func readLoad() -> (average: Double, peak: Double)? {
+        let n = loadCount, sum = loadSum, peak = loadMax
+        loadCount = 0; loadSum = 0; loadMax = 0
+        return n > 0 ? (sum / Double(n), peak) : nil
+    }
+
+    func resetMeter() { loadCount = 0; loadSum = 0; loadMax = 0; overloads = 0 }
 
     // MARK: Plugin
 
@@ -71,6 +91,9 @@ final class HostEngine {
         HAL.setSampleRate(device, sampleRate)
         HAL.setBufferFrames(device, bufferFrames)
         let rate = HAL.sampleRate(device) ?? sampleRate
+        currentRate = rate
+        resetMeter()
+        _ = Self.secondsPerTick
         do {
             try preparePlugin(rate: rate)
             try startHAL(device: device, rate: rate)
@@ -170,21 +193,19 @@ final class HostEngine {
 
     // MARK: Temps réel
 
-    private static func peak(_ list: UnsafeMutableAudioBufferListPointer) -> Float {
-        var m: Float = 0
-        for b in list {
-            guard let d = b.mData?.assumingMemoryBound(to: Float.self) else { continue }
-            for i in 0..<Int(b.mDataByteSize) / 4 { m = max(m, abs(d[i])) }
-        }
-        return m
-    }
-
-    func resetPeaks() { stats.inputPeak = 0; stats.outputPeak = 0 }
-
     fileprivate func render(flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>,
                             time: UnsafePointer<AudioTimeStamp>,
                             frames: UInt32,
                             output: UnsafeMutablePointer<AudioBufferList>?) -> OSStatus {
+        let start = mach_absolute_time()
+        defer {
+            let seconds = Double(mach_absolute_time() &- start) * Self.secondsPerTick
+            let load = seconds / (Double(frames) / currentRate)
+            loadSum += load
+            loadCount += 1
+            if load > loadMax { loadMax = load }
+            if load > 1 { overloads += 1 }
+        }
         guard let output, let unit = hal, let input = inputList else { return noErr }
         let bytes = Int(frames) * MemoryLayout<Float>.size
         for i in 0..<input.count { input[i].mDataByteSize = UInt32(bytes) }
@@ -200,14 +221,10 @@ final class HostEngine {
             for b in out { if let d = b.mData { memset(d, 0, bytes) } }
             return noErr
         }
-        stats.inputPeak = max(stats.inputPeak, Self.peak(input))
 
         if let block = renderBlock, let pull = pullBlock {
             let st = block(flags, time, frames, 0, output, pull)
-            if st == noErr {
-                stats.outputPeak = max(stats.outputPeak, Self.peak(out))
-                return noErr
-            }
+            if st == noErr { return noErr }
             stats.pluginErrors += 1
             stats.lastPluginError = st
         }
@@ -215,7 +232,6 @@ final class HostEngine {
         for i in 0..<min(out.count, input.count) {
             if let d = out[i].mData, let s = input[i].mData { memcpy(d, s, bytes) }
         }
-        stats.outputPeak = max(stats.outputPeak, Self.peak(out))
         return noErr
     }
 }
