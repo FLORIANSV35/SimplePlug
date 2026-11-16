@@ -71,6 +71,16 @@ Versions follow `V<YY>.<MM>.<XX>`: year, month, and the number of commits made d
 (resets every month), e.g. `V26.11.12`. They are computed from the git history by
 [`version.sh`](version.sh) and stamped into the app by `build.sh` (visible in *SimplePlug › About*).
 
+## Releasing
+
+```bash
+git push            # the commit to release must be on origin/main
+./release.sh        # checks, builds, tags V<YY.MM.XX>, publishes, attaches the macOS and Windows zips
+./release.sh --help # options: -n notes.md, -y, --dry-run, --no-windows
+```
+
+Every release needs its own commit, since the version is the number of commits made that month.
+
 ## Updates
 
 SimplePlug checks the latest GitHub release at launch (at most once a day) and offers to install
