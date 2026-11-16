@@ -1,4 +1,5 @@
-// Génère assets/icon-1024.png : une prise qui fait un clin d'œil (clin d'œil à « Simple Plan »).
+// Génère assets/icon-1024.png : un cœur rouge gribouillé au crayon avec une prise blanche dessinée à la main
+// (clin d'œil à l'univers de « Simple Plan »). Dessin déterministe (graine fixe).
 // Usage : swift assets/make_icon.swift assets/icon-1024.png
 import AppKit
 import CoreGraphics
@@ -8,147 +9,217 @@ let S = 1024
 let cs = CGColorSpaceCreateDeviceRGB()
 let ctx = CGContext(data: nil, width: S, height: S, bitsPerComponent: 8, bytesPerRow: 0, space: cs,
                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-// Origine en haut à gauche (comme un écran).
 ctx.translateBy(x: 0, y: CGFloat(S))
 ctx.scaleBy(x: 1, y: -1)
+
+// Générateur pseudo-aléatoire reproductible
+struct RNG {
+    var state: UInt64 = 0x5eed_1234_abcd
+    mutating func next() -> CGFloat {
+        state = state &* 6364136223846793005 &+ 1442695040888963407
+        return CGFloat((state >> 33) & 0xFFFFFF) / CGFloat(0xFFFFFF)
+    }
+    mutating func range(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * next() }
+}
+var rng = RNG()
 
 func color(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {
     CGColor(colorSpace: cs, components: [CGFloat((hex >> 16) & 255) / 255, CGFloat((hex >> 8) & 255) / 255,
                                           CGFloat(hex & 255) / 255, a])!
 }
 
-func gradient(_ stops: [(CGFloat, CGColor)]) -> CGGradient {
-    CGGradient(colorsSpace: cs, colors: stops.map { $0.1 } as CFArray, locations: stops.map { $0.0 })!
-}
-
-func fillLinear(_ path: CGPath, _ g: CGGradient, from: CGPoint, to: CGPoint) {
-    ctx.saveGState()
-    ctx.addPath(path); ctx.clip()
-    ctx.drawLinearGradient(g, start: from, end: to, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
-    ctx.restoreGState()
-}
-
-func star(_ c: CGPoint, _ r: CGFloat, _ col: CGColor) {
-    let p = CGMutablePath()
-    let k = r * 0.22
-    p.move(to: CGPoint(x: c.x, y: c.y - r))
-    p.addQuadCurve(to: CGPoint(x: c.x + r, y: c.y), control: CGPoint(x: c.x + k, y: c.y - k))
-    p.addQuadCurve(to: CGPoint(x: c.x, y: c.y + r), control: CGPoint(x: c.x + k, y: c.y + k))
-    p.addQuadCurve(to: CGPoint(x: c.x - r, y: c.y), control: CGPoint(x: c.x - k, y: c.y + k))
-    p.addQuadCurve(to: CGPoint(x: c.x, y: c.y - r), control: CGPoint(x: c.x - k, y: c.y - k))
-    ctx.setFillColor(col); ctx.addPath(p); ctx.fillPath()
-}
-
-let ink = color(0x14121a)
-
-// MARK: Fond (carré arrondi façon macOS, 824 px dans la grille de 1024)
+// MARK: Papier
 let tile = CGRect(x: 100, y: 100, width: 824, height: 824)
 let tilePath = CGPath(roundedRect: tile, cornerWidth: 188, cornerHeight: 188, transform: nil)
 
 ctx.saveGState()
-ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 28, color: color(0x000000, 0.45))
-ctx.setFillColor(color(0xb3121f))
+ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 28, color: color(0x000000, 0.4))
+ctx.setFillColor(color(0xf3f1ec))
 ctx.addPath(tilePath); ctx.fillPath()
 ctx.restoreGState()
 
-fillLinear(tilePath, gradient([(0, color(0xff4756)), (0.55, color(0xe0202e)), (1, color(0x9c0f1b))]),
-           from: CGPoint(x: 200, y: 100), to: CGPoint(x: 800, y: 924))
+ctx.saveGState()
+ctx.addPath(tilePath); ctx.clip()
+ctx.setFillColor(color(0xf4f2ed)); ctx.fill(tile)
+// grain de papier : taches et fibres
+for _ in 0..<5200 {
+    let x = rng.range(100, 924), y = rng.range(100, 924)
+    let r = rng.range(0.6, 2.4)
+    ctx.setFillColor(color(rng.next() > 0.5 ? 0xb9b4a8 : 0xffffff, rng.range(0.08, 0.35)))
+    ctx.fillEllipse(in: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2))
+}
+for _ in 0..<260 {
+    let x = rng.range(100, 924), y = rng.range(100, 924), a = rng.range(0, .pi)
+    let l = rng.range(10, 36)
+    ctx.setStrokeColor(color(0xb9b4a8, rng.range(0.06, 0.18))); ctx.setLineWidth(1)
+    ctx.move(to: CGPoint(x: x, y: y)); ctx.addLine(to: CGPoint(x: x + cos(a) * l, y: y + sin(a) * l)); ctx.strokePath()
+}
+ctx.restoreGState()
+
+// MARK: Cœur
+let cx: CGFloat = 512, cy: CGFloat = 458, sc: CGFloat = 20.5
+
+func heartPoint(_ t: CGFloat, scale k: CGFloat = 1) -> CGPoint {
+    let x = 16 * pow(sin(t), 3)
+    let y = 13 * cos(t) - 5 * cos(2 * t) - 2 * cos(3 * t) - cos(4 * t)
+    return CGPoint(x: cx + x * sc * k, y: cy - y * sc * k)
+}
+
+func heartPath(scale k: CGFloat = 1, steps: Int = 240) -> CGPath {
+    let p = CGMutablePath()
+    for i in 0...steps {
+        let pt = heartPoint(CGFloat(i) / CGFloat(steps) * 2 * .pi, scale: k)
+        if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+    }
+    p.closeSubpath()
+    return p
+}
+
+let reds: [UInt32] = [0xe5131d, 0xf0262b, 0xd20f19, 0xff3a3a, 0xc40d17]
 
 ctx.saveGState()
 ctx.addPath(tilePath); ctx.clip()
-// reflet doux en haut à gauche
-ctx.drawRadialGradient(gradient([(0, color(0xffffff, 0.32)), (1, color(0xffffff, 0))]),
-                       startCenter: CGPoint(x: 330, y: 220), startRadius: 0,
-                       endCenter: CGPoint(x: 330, y: 220), endRadius: 520, options: [])
-// trame de points (ambiance fanzine punk) dans le coin bas droit
-for row in 0..<18 {
-    for col in 0..<18 {
-        let x = 924 - CGFloat(col) * 34 + (row % 2 == 0 ? 0 : 17)
-        let y = 924 - CGFloat(row) * 34
-        let d = hypot(924 - x, 924 - y) / 620
-        let r = max(0, 11 * (1 - d))
-        if r > 0.8 {
-            ctx.setFillColor(color(0x000000, 0.16))
-            ctx.fillEllipse(in: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2))
-        }
+ctx.setLineCap(.round); ctx.setLineJoin(.round)
+
+// remplissage au crayon : plusieurs passes de traits courbes dans des directions différentes
+ctx.saveGState()
+ctx.addPath(heartPath(scale: 1.01)); ctx.clip()
+for (angle, spacing, width) in [(CGFloat(-0.55), CGFloat(8), CGFloat(9)),
+                                (CGFloat(0.62), CGFloat(11), CGFloat(8)),
+                                (CGFloat(-1.25), CGFloat(15), CGFloat(7)),
+                                (CGFloat(0.05), CGFloat(20), CGFloat(6))] {
+    let d = CGPoint(x: cos(angle), y: sin(angle)), n = CGPoint(x: -sin(angle), y: cos(angle))
+    var k: CGFloat = -560
+    var flip = false
+    while k < 560 {
+        let off = k + rng.range(-3, 3)
+        let a = CGPoint(x: cx + d.x * -520 + n.x * off, y: cy + 40 + d.y * -520 + n.y * off)
+        let b = CGPoint(x: cx + d.x * 520 + n.x * (off + rng.range(-10, 10)), y: cy + 40 + d.y * 520 + n.y * (off + rng.range(-10, 10)))
+        let mid = CGPoint(x: (a.x + b.x) / 2 + n.x * rng.range(-14, 14), y: (a.y + b.y) / 2 + n.y * rng.range(-14, 14))
+        ctx.setStrokeColor(color(reds[Int(rng.range(0, CGFloat(reds.count)))], rng.range(0.7, 0.95)))
+        ctx.setLineWidth(width * rng.range(0.7, 1.2))
+        ctx.move(to: flip ? b : a)
+        ctx.addQuadCurve(to: flip ? a : b, control: mid)
+        ctx.strokePath()
+        flip.toggle()
+        k += spacing * rng.range(0.7, 1.3)
     }
 }
+// éclats de papier qui percent à travers le rouge
+for _ in 0..<420 {
+    let x = rng.range(180, 850), y = rng.range(200, 820), a = rng.range(-1, 1), l = rng.range(6, 26)
+    ctx.setStrokeColor(color(0xffffff, rng.range(0.06, 0.22))); ctx.setLineWidth(rng.range(1, 2.6))
+    ctx.move(to: CGPoint(x: x, y: y)); ctx.addLine(to: CGPoint(x: x + cos(a) * l, y: y + sin(a) * l)); ctx.strokePath()
+}
 ctx.restoreGState()
 
-// Étincelles
-star(CGPoint(x: 205, y: 250), 40, color(0xffffff, 0.95))
-star(CGPoint(x: 800, y: 215), 26, color(0xffffff, 0.8))
-star(CGPoint(x: 828, y: 560), 20, color(0xffe066, 0.95))
-star(CGPoint(x: 190, y: 700), 22, color(0xffe066, 0.9))
+// contour griffonné : plusieurs tours un peu décalés
+for pass in 0..<4 {
+    let k = 1.0 + CGFloat(pass - 1) * 0.012
+    ctx.setStrokeColor(color(reds[pass % reds.count], 0.92))
+    ctx.setLineWidth(rng.range(7, 11))
+    var first = true
+    let steps = 90
+    let start = rng.range(0, 2 * .pi)
+    for i in 0...(steps + 3) {
+        var pt = heartPoint(start + CGFloat(i) / CGFloat(steps) * 2 * .pi, scale: k)
+        pt.x += rng.range(-5, 5); pt.y += rng.range(-5, 5)
+        if first { ctx.move(to: pt); first = false } else { ctx.addLine(to: pt) }
+    }
+    ctx.strokePath()
+}
+ctx.restoreGState()
 
-// MARK: Mascotte (ombre portée commune)
-ctx.saveGState()
-ctx.setShadow(offset: CGSize(width: 0, height: -16), blur: 22, color: color(0x000000, 0.5))
-ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-
-let lw: CGFloat = 16 // épaisseur du contour
-
-// Câble en S qui sort du bas
-let cable = CGMutablePath()
-cable.move(to: CGPoint(x: 512, y: 640))
-cable.addCurve(to: CGPoint(x: 600, y: 770), control1: CGPoint(x: 512, y: 720), control2: CGPoint(x: 700, y: 700))
-cable.addCurve(to: CGPoint(x: 430, y: 850), control1: CGPoint(x: 520, y: 830), control2: CGPoint(x: 500, y: 880))
-ctx.setLineCap(.round)
-ctx.addPath(cable); ctx.setStrokeColor(ink); ctx.setLineWidth(52 + lw); ctx.strokePath()
-ctx.addPath(cable); ctx.setStrokeColor(color(0x3a3744)); ctx.setLineWidth(52 - 4); ctx.strokePath()
-ctx.addPath(cable); ctx.setStrokeColor(color(0x55515f)); ctx.setLineWidth(12)
-ctx.setLineCap(.round); ctx.strokePath()
-
-// Fiches métalliques
-for dx in [-92.0, 92.0] {
-    let prong = CGPath(roundedRect: CGRect(x: 512 + dx - 36, y: 150, width: 72, height: 200),
-                       cornerWidth: 16, cornerHeight: 16, transform: nil)
-    fillLinear(prong, gradient([(0, color(0xf4f4f8)), (0.5, color(0xc9cad3)), (1, color(0x8d8e99))]),
-               from: CGPoint(x: 512 + dx - 36, y: 0), to: CGPoint(x: 512 + dx + 36, y: 0))
-    ctx.addPath(prong); ctx.setStrokeColor(ink); ctx.setLineWidth(lw); ctx.strokePath()
+// MARK: Prise blanche (feutre) à la place des lettres
+func rough(_ pts: [CGPoint], amp: CGFloat) -> [CGPoint] {
+    pts.map { CGPoint(x: $0.x + rng.range(-amp, amp), y: $0.y + rng.range(-amp, amp)) }
 }
 
-// Corps de la prise
-let body = CGPath(roundedRect: CGRect(x: 292, y: 320, width: 440, height: 330), cornerWidth: 110, cornerHeight: 110, transform: nil)
-fillLinear(body, gradient([(0, color(0xffffff)), (1, color(0xe3e3ec))]),
-           from: CGPoint(x: 512, y: 320), to: CGPoint(x: 512, y: 650))
-ctx.addPath(body); ctx.setStrokeColor(ink); ctx.setLineWidth(lw); ctx.strokePath()
+func densify(_ pts: [CGPoint], step: CGFloat) -> [CGPoint] {
+    var out: [CGPoint] = []
+    for i in 0..<pts.count {
+        let p = pts[i], q = pts[(i + 1) % pts.count]
+        let n = max(1, Int(hypot(q.x - p.x, q.y - p.y) / step))
+        for j in 0..<n {
+            let t = CGFloat(j) / CGFloat(n)
+            out.append(CGPoint(x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t))
+        }
+    }
+    return out
+}
 
-// Joues
-ctx.setFillColor(color(0xff6b81, 0.55))
-ctx.fillEllipse(in: CGRect(x: 330, y: 500, width: 56, height: 34))
-ctx.fillEllipse(in: CGRect(x: 638, y: 500, width: 56, height: 34))
+func roundedRectPoints(_ r: CGRect, radius: CGFloat, step: CGFloat = 14) -> [CGPoint] {
+    let rr = min(radius, r.width / 2, r.height / 2)
+    let centers: [CGPoint] = [CGPoint(x: r.maxX - rr, y: r.minY + rr), CGPoint(x: r.maxX - rr, y: r.maxY - rr),
+                              CGPoint(x: r.minX + rr, y: r.maxY - rr), CGPoint(x: r.minX + rr, y: r.minY + rr)]
+    var pts: [CGPoint] = []
+    for (idx, c) in centers.enumerated() {
+        let a0 = -CGFloat.pi / 2 + CGFloat(idx) * CGFloat.pi / 2
+        for i in 0...6 {
+            let a = a0 + CGFloat(i) / 6 * CGFloat.pi / 2
+            pts.append(CGPoint(x: c.x + cos(a) * rr, y: c.y + sin(a) * rr))
+        }
+    }
+    return densify(pts, step: step)
+}
 
-// Œil gauche ouvert
-ctx.setFillColor(ink)
-ctx.fillEllipse(in: CGRect(x: 380 - 40, y: 440 - 46, width: 80, height: 92))
-ctx.setFillColor(color(0xffffff))
-ctx.fillEllipse(in: CGRect(x: 380 - 4, y: 440 - 30, width: 26, height: 26))
+func drawMarker(_ pts: [CGPoint], width: CGFloat, closed: Bool = false) {
+    guard let f = pts.first else { return }
+    ctx.setStrokeColor(color(0xfffdf8)); ctx.setLineWidth(width)
+    ctx.setLineCap(.round); ctx.setLineJoin(.round)
+    ctx.move(to: f)
+    for p in pts.dropFirst() { ctx.addLine(to: p) }
+    if closed { ctx.closePath() }
+    ctx.strokePath()
+}
 
-// Œil droit : clin d'œil
-let wink = CGMutablePath()
-wink.addArc(center: CGPoint(x: 644, y: 470), radius: 44, startAngle: .pi * 1.12, endAngle: .pi * 1.88, clockwise: false)
-ctx.setLineCap(.round)
-ctx.addPath(wink); ctx.setStrokeColor(ink); ctx.setLineWidth(24); ctx.strokePath()
+func fillMarker(_ pts: [CGPoint]) {
+    guard let f = pts.first else { return }
+    ctx.setFillColor(color(0xfffdf8))
+    ctx.move(to: f)
+    for p in pts.dropFirst() { ctx.addLine(to: p) }
+    ctx.closePath(); ctx.fillPath()
+}
 
-// Sourire en coin + langue
-let tongue = CGPath(ellipseIn: CGRect(x: 548, y: 536, width: 70, height: 84), transform: nil)
-ctx.setFillColor(color(0xff5d7a)); ctx.addPath(tongue); ctx.fillPath()
-ctx.addPath(tongue); ctx.setStrokeColor(ink); ctx.setLineWidth(10); ctx.strokePath()
-ctx.setStrokeColor(color(0xd93a5a)); ctx.setLineWidth(6)
-ctx.move(to: CGPoint(x: 583, y: 560)); ctx.addLine(to: CGPoint(x: 583, y: 596)); ctx.strokePath()
+// fiches
+for x in [CGFloat(452), CGFloat(572)] {
+    let r = CGRect(x: x - 19, y: 346, width: 38, height: 96)
+    let pts = roundedRectPoints(r, radius: 4)
+    fillMarker(rough(pts, amp: 1.5)); drawMarker(rough(pts, amp: 2.5), width: 11, closed: true)
+}
+// corps
+let bodyR = CGRect(x: 380, y: 432, width: 264, height: 156)
+let bodyPts = roundedRectPoints(bodyR, radius: 50)
+fillMarker(rough(bodyPts, amp: 1.5))
+drawMarker(rough(bodyPts, amp: 3), width: 12, closed: true)
+drawMarker(rough(bodyPts, amp: 3), width: 8, closed: true)
+// câble en S
+func bezier(_ t: CGFloat, _ p0: CGPoint, _ p1: CGPoint, _ p2: CGPoint, _ p3: CGPoint) -> CGPoint {
+    let u = 1 - t
+    let w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t
+    let x: CGFloat = w0 * p0.x + w1 * p1.x + w2 * p2.x + w3 * p3.x
+    let y: CGFloat = w0 * p0.y + w1 * p1.y + w2 * p2.y + w3 * p3.y
+    return CGPoint(x: x, y: y)
+}
+var cable: [CGPoint] = []
+for i in 0...40 {
+    cable.append(bezier(CGFloat(i) / 40, CGPoint(x: 512, y: 585), CGPoint(x: 512, y: 665),
+                        CGPoint(x: 604, y: 610), CGPoint(x: 548, y: 696)))
+}
+drawMarker(rough(cable, amp: 1.5), width: 30)
+drawMarker(rough(cable, amp: 2.5), width: 22)
 
+// petit « clin d'œil » dessiné : un œil fermé et un point sur le corps
+ctx.setStrokeColor(color(0xe5131d)); ctx.setLineCap(.round); ctx.setLineWidth(10)
+let eye = CGMutablePath()
+eye.addArc(center: CGPoint(x: 588, y: 506), radius: 24, startAngle: .pi * 1.1, endAngle: .pi * 1.9, clockwise: false)
+ctx.addPath(eye); ctx.strokePath()
+ctx.setFillColor(color(0xe5131d))
+ctx.fillEllipse(in: CGRect(x: 446 - 13, y: 502 - 15, width: 26, height: 30))
 let smile = CGMutablePath()
-smile.move(to: CGPoint(x: 422, y: 546))
-smile.addCurve(to: CGPoint(x: 640, y: 530), control1: CGPoint(x: 470, y: 606), control2: CGPoint(x: 600, y: 600))
-ctx.addPath(smile); ctx.setStrokeColor(ink); ctx.setLineWidth(20); ctx.setLineCap(.round); ctx.strokePath()
-
-ctx.endTransparencyLayer()
-ctx.restoreGState()
-
-// Étincelle du clin d'œil
-star(CGPoint(x: 730, y: 380), 44, color(0xffffff))
-star(CGPoint(x: 730, y: 380), 24, color(0xffe066))
+smile.move(to: CGPoint(x: 462, y: 548))
+smile.addQuadCurve(to: CGPoint(x: 568, y: 546), control: CGPoint(x: 515, y: 584))
+ctx.setLineWidth(9); ctx.addPath(smile); ctx.strokePath()
 
 // MARK: Export
 let image = ctx.makeImage()!
