@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'windows/**'
+      - 'assets/**'
       - '.github/workflows/windows.yml'
   workflow_dispatch:
     inputs:

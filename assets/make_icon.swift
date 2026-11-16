@@ -1,5 +1,6 @@
-// Génère assets/icon-1024.png : un cœur rouge gribouillé au crayon avec une prise blanche dessinée à la main
-// (clin d'œil à l'univers de « Simple Plan »). Dessin déterministe (graine fixe).
+// Génère assets/icon-1024.png : « SIMPLE / PLUG » en lettres graffiti au pinceau, noir sur papier,
+// dans un cercle de pinceau avec coulures (clin d'œil à l'univers de « Simple Plan »).
+// Les lettres sont dessinées ici trait par trait (lettrage original), graine aléatoire fixe.
 // Usage : swift assets/make_icon.swift assets/icon-1024.png
 import AppKit
 import CoreGraphics
@@ -12,9 +13,8 @@ let ctx = CGContext(data: nil, width: S, height: S, bitsPerComponent: 8, bytesPe
 ctx.translateBy(x: 0, y: CGFloat(S))
 ctx.scaleBy(x: 1, y: -1)
 
-// Générateur pseudo-aléatoire reproductible
 struct RNG {
-    var state: UInt64 = 0x5eed_1234_abcd
+    var state: UInt64 = 0x5eed_9876_cafe
     mutating func next() -> CGFloat {
         state = state &* 6364136223846793005 &+ 1442695040888963407
         return CGFloat((state >> 33) & 0xFFFFFF) / CGFloat(0xFFFFFF)
@@ -27,6 +27,8 @@ func color(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {
     CGColor(colorSpace: cs, components: [CGFloat((hex >> 16) & 255) / 255, CGFloat((hex >> 8) & 255) / 255,
                                           CGFloat(hex & 255) / 255, a])!
 }
+let ink = color(0x0e0d0f)
+let paperHex: UInt32 = 0xf4f2ed
 
 // MARK: Papier
 let tile = CGRect(x: 100, y: 100, width: 824, height: 824)
@@ -34,192 +36,177 @@ let tilePath = CGPath(roundedRect: tile, cornerWidth: 188, cornerHeight: 188, tr
 
 ctx.saveGState()
 ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 28, color: color(0x000000, 0.4))
-ctx.setFillColor(color(0xf3f1ec))
+ctx.setFillColor(color(paperHex))
 ctx.addPath(tilePath); ctx.fillPath()
 ctx.restoreGState()
 
 ctx.saveGState()
 ctx.addPath(tilePath); ctx.clip()
-ctx.setFillColor(color(0xf4f2ed)); ctx.fill(tile)
-// grain de papier : taches et fibres
-for _ in 0..<5200 {
-    let x = rng.range(100, 924), y = rng.range(100, 924)
-    let r = rng.range(0.6, 2.4)
-    ctx.setFillColor(color(rng.next() > 0.5 ? 0xb9b4a8 : 0xffffff, rng.range(0.08, 0.35)))
+ctx.setFillColor(color(paperHex)); ctx.fill(tile)
+for _ in 0..<4200 {
+    let x = rng.range(100, 924), y = rng.range(100, 924), r = rng.range(0.6, 2.2)
+    ctx.setFillColor(color(rng.next() > 0.5 ? 0xb9b4a8 : 0xffffff, rng.range(0.06, 0.28)))
     ctx.fillEllipse(in: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2))
 }
-for _ in 0..<260 {
-    let x = rng.range(100, 924), y = rng.range(100, 924), a = rng.range(0, .pi)
-    let l = rng.range(10, 36)
-    ctx.setStrokeColor(color(0xb9b4a8, rng.range(0.06, 0.18))); ctx.setLineWidth(1)
-    ctx.move(to: CGPoint(x: x, y: y)); ctx.addLine(to: CGPoint(x: x + cos(a) * l, y: y + sin(a) * l)); ctx.strokePath()
-}
-ctx.restoreGState()
 
-// MARK: Cœur
-let cx: CGFloat = 512, cy: CGFloat = 458, sc: CGFloat = 20.5
-
-func heartPoint(_ t: CGFloat, scale k: CGFloat = 1) -> CGPoint {
-    let x = 16 * pow(sin(t), 3)
-    let y = 13 * cos(t) - 5 * cos(2 * t) - 2 * cos(3 * t) - cos(4 * t)
-    return CGPoint(x: cx + x * sc * k, y: cy - y * sc * k)
-}
-
-func heartPath(scale k: CGFloat = 1, steps: Int = 240) -> CGPath {
-    let p = CGMutablePath()
-    for i in 0...steps {
-        let pt = heartPoint(CGFloat(i) / CGFloat(steps) * 2 * .pi, scale: k)
-        if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
-    }
-    p.closeSubpath()
-    return p
-}
-
-let reds: [UInt32] = [0xe5131d, 0xf0262b, 0xd20f19, 0xff3a3a, 0xc40d17]
-
-ctx.saveGState()
-ctx.addPath(tilePath); ctx.clip()
-ctx.setLineCap(.round); ctx.setLineJoin(.round)
-
-// remplissage au crayon : plusieurs passes de traits courbes dans des directions différentes
-ctx.saveGState()
-ctx.addPath(heartPath(scale: 1.01)); ctx.clip()
-for (angle, spacing, width) in [(CGFloat(-0.55), CGFloat(8), CGFloat(9)),
-                                (CGFloat(0.62), CGFloat(11), CGFloat(8)),
-                                (CGFloat(-1.25), CGFloat(15), CGFloat(7)),
-                                (CGFloat(0.05), CGFloat(20), CGFloat(6))] {
-    let d = CGPoint(x: cos(angle), y: sin(angle)), n = CGPoint(x: -sin(angle), y: cos(angle))
-    var k: CGFloat = -560
-    var flip = false
-    while k < 560 {
-        let off = k + rng.range(-3, 3)
-        let a = CGPoint(x: cx + d.x * -520 + n.x * off, y: cy + 40 + d.y * -520 + n.y * off)
-        let b = CGPoint(x: cx + d.x * 520 + n.x * (off + rng.range(-10, 10)), y: cy + 40 + d.y * 520 + n.y * (off + rng.range(-10, 10)))
-        let mid = CGPoint(x: (a.x + b.x) / 2 + n.x * rng.range(-14, 14), y: (a.y + b.y) / 2 + n.y * rng.range(-14, 14))
-        ctx.setStrokeColor(color(reds[Int(rng.range(0, CGFloat(reds.count)))], rng.range(0.7, 0.95)))
-        ctx.setLineWidth(width * rng.range(0.7, 1.2))
-        ctx.move(to: flip ? b : a)
-        ctx.addQuadCurve(to: flip ? a : b, control: mid)
-        ctx.strokePath()
-        flip.toggle()
-        k += spacing * rng.range(0.7, 1.3)
-    }
-}
-// éclats de papier qui percent à travers le rouge
-for _ in 0..<420 {
-    let x = rng.range(180, 850), y = rng.range(200, 820), a = rng.range(-1, 1), l = rng.range(6, 26)
-    ctx.setStrokeColor(color(0xffffff, rng.range(0.06, 0.22))); ctx.setLineWidth(rng.range(1, 2.6))
-    ctx.move(to: CGPoint(x: x, y: y)); ctx.addLine(to: CGPoint(x: x + cos(a) * l, y: y + sin(a) * l)); ctx.strokePath()
-}
-ctx.restoreGState()
-
-// contour griffonné : plusieurs tours un peu décalés
-for pass in 0..<4 {
-    let k = 1.0 + CGFloat(pass - 1) * 0.012
-    ctx.setStrokeColor(color(reds[pass % reds.count], 0.92))
-    ctx.setLineWidth(rng.range(7, 11))
-    var first = true
-    let steps = 90
-    let start = rng.range(0, 2 * .pi)
-    for i in 0...(steps + 3) {
-        var pt = heartPoint(start + CGFloat(i) / CGFloat(steps) * 2 * .pi, scale: k)
-        pt.x += rng.range(-5, 5); pt.y += rng.range(-5, 5)
-        if first { ctx.move(to: pt); first = false } else { ctx.addLine(to: pt) }
-    }
-    ctx.strokePath()
-}
-ctx.restoreGState()
-
-// MARK: Prise blanche (feutre) à la place des lettres
-func rough(_ pts: [CGPoint], amp: CGFloat) -> [CGPoint] {
-    pts.map { CGPoint(x: $0.x + rng.range(-amp, amp), y: $0.y + rng.range(-amp, amp)) }
-}
-
-func densify(_ pts: [CGPoint], step: CGFloat) -> [CGPoint] {
+// MARK: Outils de pinceau
+func spline(_ p: [CGPoint], samples: Int = 14) -> [CGPoint] {
+    guard p.count > 2 else { return p }
     var out: [CGPoint] = []
-    for i in 0..<pts.count {
-        let p = pts[i], q = pts[(i + 1) % pts.count]
-        let n = max(1, Int(hypot(q.x - p.x, q.y - p.y) / step))
-        for j in 0..<n {
-            let t = CGFloat(j) / CGFloat(n)
-            out.append(CGPoint(x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t))
+    for i in 0..<(p.count - 1) {
+        let p0 = p[max(i - 1, 0)], p1 = p[i], p2 = p[i + 1], p3 = p[min(i + 2, p.count - 1)]
+        for s in 0..<samples {
+            let t = CGFloat(s) / CGFloat(samples), t2 = t * t, t3 = t2 * t
+            let x0 = 2 * p1.x
+            let x1 = (p2.x - p0.x) * t
+            let x2 = (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2
+            let x3 = (3 * p1.x - p0.x - 3 * p2.x + p3.x) * t3
+            let y0 = 2 * p1.y
+            let y1 = (p2.y - p0.y) * t
+            let y2 = (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2
+            let y3 = (3 * p1.y - p0.y - 3 * p2.y + p3.y) * t3
+            out.append(CGPoint(x: 0.5 * (x0 + x1 + x2 + x3), y: 0.5 * (y0 + y1 + y2 + y3)))
         }
     }
+    out.append(p.last!)
     return out
 }
 
-func roundedRectPoints(_ r: CGRect, radius: CGFloat, step: CGFloat = 14) -> [CGPoint] {
-    let rr = min(radius, r.width / 2, r.height / 2)
-    let centers: [CGPoint] = [CGPoint(x: r.maxX - rr, y: r.minY + rr), CGPoint(x: r.maxX - rr, y: r.maxY - rr),
-                              CGPoint(x: r.minX + rr, y: r.maxY - rr), CGPoint(x: r.minX + rr, y: r.minY + rr)]
-    var pts: [CGPoint] = []
-    for (idx, c) in centers.enumerated() {
-        let a0 = -CGFloat.pi / 2 + CGFloat(idx) * CGFloat.pi / 2
-        for i in 0...6 {
-            let a = a0 + CGFloat(i) / 6 * CGFloat.pi / 2
-            pts.append(CGPoint(x: c.x + cos(a) * rr, y: c.y + sin(a) * rr))
+func lineSamples(_ p: [CGPoint], step: CGFloat = 2) -> [CGPoint] {
+    var out: [CGPoint] = []
+    for i in 0..<(p.count - 1) {
+        let a = p[i], b = p[i + 1]
+        let n = max(1, Int(hypot(b.x - a.x, b.y - a.y) / step))
+        for j in 0..<n {
+            let t = CGFloat(j) / CGFloat(n)
+            out.append(CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t))
         }
     }
-    return densify(pts, step: step)
+    out.append(p.last!)
+    return out
 }
 
-func drawMarker(_ pts: [CGPoint], width: CGFloat, closed: Bool = false) {
-    guard let f = pts.first else { return }
-    ctx.setStrokeColor(color(0xfffdf8)); ctx.setLineWidth(width)
-    ctx.setLineCap(.round); ctx.setLineJoin(.round)
-    ctx.move(to: f)
-    for p in pts.dropFirst() { ctx.addLine(to: p) }
-    if closed { ctx.closePath() }
-    ctx.strokePath()
+/// Trace une ligne avec une brosse plate inclinée : épaisseur variable, bords irréguliers.
+func brush(_ pts: [CGPoint], width: CGFloat, taper: Bool = false) {
+    let dense = lineSamples(pts, step: 1.6)
+    let n = dense.count
+    for (i, p) in dense.enumerated() {
+        var w = width
+        if taper {
+            let t = CGFloat(i) / CGFloat(max(n - 1, 1))
+            w *= pow(sin(CGFloat.pi * t), 0.55)
+        }
+        w *= rng.range(0.9, 1.1)
+        ctx.saveGState()
+        ctx.translateBy(x: p.x + rng.range(-1.2, 1.2), y: p.y + rng.range(-1.2, 1.2))
+        ctx.rotate(by: -0.62)
+        ctx.setFillColor(ink)
+        ctx.fillEllipse(in: CGRect(x: -w * 0.55, y: -w * 0.3, width: w * 1.1, height: w * 0.6))
+        ctx.restoreGState()
+    }
+    // brosse sèche : fines stries de papier le long du trait
+    if width > 14 {
+        for _ in 0..<(n / 14) {
+            let s = Int(rng.range(0, CGFloat(n - 2)))
+            let len = Int(rng.range(8, 40))
+            let off = rng.range(-width * 0.3, width * 0.3)
+            ctx.setStrokeColor(color(paperHex, rng.range(0.2, 0.5)))
+            ctx.setLineWidth(rng.range(0.8, 2.2)); ctx.setLineCap(.round)
+            var started = false
+            for k in s..<min(s + len, n - 1) {
+                let a = dense[k], b = dense[k + 1]
+                let dx = b.x - a.x, dy = b.y - a.y
+                let l = max(hypot(dx, dy), 0.001)
+                let q = CGPoint(x: a.x - dy / l * off, y: a.y + dx / l * off)
+                if !started { ctx.move(to: q); started = true } else { ctx.addLine(to: q) }
+            }
+            ctx.strokePath()
+        }
+    }
 }
 
-func fillMarker(_ pts: [CGPoint]) {
-    guard let f = pts.first else { return }
-    ctx.setFillColor(color(0xfffdf8))
-    ctx.move(to: f)
-    for p in pts.dropFirst() { ctx.addLine(to: p) }
-    ctx.closePath(); ctx.fillPath()
+// MARK: Lettres (coordonnées u: 0…0.8, v: 0 haut … 1 bas)
+struct Glyph { var strokes: [[CGPoint]]; var smooth: Bool }
+func P(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x, y: y) }
+
+let glyphs: [Character: Glyph] = [
+    "S": Glyph(strokes: [[P(0.74, 0.14), P(0.46, 0.0), P(0.12, 0.12), P(0.14, 0.38), P(0.46, 0.5), P(0.72, 0.62), P(0.7, 0.88), P(0.4, 1.0), P(0.04, 0.86)]], smooth: true),
+    "I": Glyph(strokes: [[P(0.38, 0.0), P(0.4, 1.0)]], smooth: false),
+    "M": Glyph(strokes: [[P(0.04, 1.0), P(0.1, 0.0), P(0.4, 0.62), P(0.7, 0.0), P(0.78, 1.0)]], smooth: false),
+    "P": Glyph(strokes: [[P(0.1, 1.0), P(0.12, 0.0), P(0.5, 0.04), P(0.7, 0.24), P(0.5, 0.5), P(0.12, 0.52)]], smooth: true),
+    "L": Glyph(strokes: [[P(0.1, 0.0), P(0.1, 1.0), P(0.74, 0.98)]], smooth: false),
+    "E": Glyph(strokes: [[P(0.72, 0.02), P(0.1, 0.0), P(0.1, 1.0), P(0.74, 0.98)], [P(0.1, 0.5), P(0.56, 0.5)]], smooth: false),
+    "U": Glyph(strokes: [[P(0.1, 0.0), P(0.14, 0.78), P(0.4, 1.0), P(0.66, 0.78), P(0.72, 0.0)]], smooth: true),
+    "G": Glyph(strokes: [[P(0.72, 0.16), P(0.42, 0.0), P(0.1, 0.22), P(0.08, 0.78), P(0.4, 1.0), P(0.72, 0.84), P(0.72, 0.56), P(0.46, 0.56)]], smooth: true),
+]
+
+var drips: [(CGPoint, CGFloat)] = []
+
+func drawWord(_ word: String, centerX: CGFloat, top: CGFloat, height H: CGFloat, penScale: CGFloat,
+              dripChance: CGFloat, dripMax: CGFloat) {
+    let pitch = H * 0.80
+    let total = pitch * CGFloat(word.count)
+    var x0 = centerX - total / 2
+    for ch in word {
+        guard let g = glyphs[ch] else { x0 += pitch; continue }
+        let rot = rng.range(-0.05, 0.05), dy = rng.range(-H * 0.035, H * 0.035), sc = rng.range(0.95, 1.05)
+        let cxg = x0 + H * 0.4, cyg = top + H / 2 + dy
+        func map(_ p: CGPoint) -> CGPoint {
+            // italique + rotation + échelle propres à chaque lettre
+            let lx = (p.x - 0.4) * H * sc + (0.5 - p.y) * H * 0.16
+            let ly = (p.y - 0.5) * H * sc
+            let c = cos(rot), s = sin(rot)
+            return CGPoint(x: cxg + lx * c - ly * s, y: cyg + lx * s + ly * c)
+        }
+        for stroke in g.strokes {
+            let mapped = stroke.map(map)
+            brush(g.smooth ? spline(mapped) : mapped, width: H * penScale)
+        }
+        // coulure possible sous la lettre
+        if rng.next() < dripChance, let base = g.strokes.flatMap({ $0 }).max(by: { $0.y < $1.y }) {
+            drips.append((map(P(base.x + rng.range(-0.05, 0.05), 1.0)), rng.range(30, dripMax)))
+        }
+        x0 += pitch
+    }
 }
 
-// fiches
-for x in [CGFloat(452), CGFloat(572)] {
-    let r = CGRect(x: x - 19, y: 346, width: 38, height: 96)
-    let pts = roundedRectPoints(r, radius: 4)
-    fillMarker(rough(pts, amp: 1.5)); drawMarker(rough(pts, amp: 2.5), width: 11, closed: true)
+// MARK: Cercle de pinceau (coupé en haut et en bas comme sur un tampon)
+func ringArc(center: CGPoint, radius: CGFloat, from a0: CGFloat, to a1: CGFloat, width: CGFloat) {
+    var pts: [CGPoint] = []
+    let steps = 90
+    for i in 0...steps {
+        let t = CGFloat(i) / CGFloat(steps)
+        let a = a0 + (a1 - a0) * t
+        let r = radius + sin(t * 9) * 3 + rng.range(-1.5, 1.5)
+        pts.append(CGPoint(x: center.x + cos(a) * r, y: center.y + sin(a) * r))
+    }
+    brush(pts, width: width, taper: true)
 }
-// corps
-let bodyR = CGRect(x: 380, y: 432, width: 264, height: 156)
-let bodyPts = roundedRectPoints(bodyR, radius: 50)
-fillMarker(rough(bodyPts, amp: 1.5))
-drawMarker(rough(bodyPts, amp: 3), width: 12, closed: true)
-drawMarker(rough(bodyPts, amp: 3), width: 8, closed: true)
-// câble en S
-func bezier(_ t: CGFloat, _ p0: CGPoint, _ p1: CGPoint, _ p2: CGPoint, _ p3: CGPoint) -> CGPoint {
-    let u = 1 - t
-    let w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t
-    let x: CGFloat = w0 * p0.x + w1 * p1.x + w2 * p2.x + w3 * p3.x
-    let y: CGFloat = w0 * p0.y + w1 * p1.y + w2 * p2.y + w3 * p3.y
-    return CGPoint(x: x, y: y)
-}
-var cable: [CGPoint] = []
-for i in 0...40 {
-    cable.append(bezier(CGFloat(i) / 40, CGPoint(x: 512, y: 585), CGPoint(x: 512, y: 665),
-                        CGPoint(x: 604, y: 610), CGPoint(x: 548, y: 696)))
-}
-drawMarker(rough(cable, amp: 1.5), width: 30)
-drawMarker(rough(cable, amp: 2.5), width: 22)
+let ringC = CGPoint(x: 512, y: 512)
+ringArc(center: ringC, radius: 362, from: CGFloat.pi * 1.10, to: CGFloat.pi * 1.90, width: 46)   // haut
+ringArc(center: ringC, radius: 362, from: CGFloat.pi * 0.10, to: CGFloat.pi * 0.90, width: 46)   // bas
 
-// petit « clin d'œil » dessiné : un œil fermé et un point sur le corps
-ctx.setStrokeColor(color(0xe5131d)); ctx.setLineCap(.round); ctx.setLineWidth(10)
-let eye = CGMutablePath()
-eye.addArc(center: CGPoint(x: 588, y: 506), radius: 24, startAngle: .pi * 1.1, endAngle: .pi * 1.9, clockwise: false)
-ctx.addPath(eye); ctx.strokePath()
-ctx.setFillColor(color(0xe5131d))
-ctx.fillEllipse(in: CGRect(x: 446 - 13, y: 502 - 15, width: 26, height: 30))
-let smile = CGMutablePath()
-smile.move(to: CGPoint(x: 462, y: 548))
-smile.addQuadCurve(to: CGPoint(x: 568, y: 546), control: CGPoint(x: 515, y: 584))
-ctx.setLineWidth(9); ctx.addPath(smile); ctx.strokePath()
+// MARK: Texte
+drawWord("SIMPLE", centerX: 508, top: 336, height: 112, penScale: 0.25, dripChance: 0.2, dripMax: 44)
+drawWord("PLUG", centerX: 512, top: 508, height: 148, penScale: 0.25, dripChance: 0.6, dripMax: 120)
+
+// Coulures
+for (p, len) in drips {
+    let w = rng.range(7, 11)
+    ctx.setStrokeColor(ink); ctx.setLineCap(.round); ctx.setLineWidth(w)
+    ctx.move(to: p); ctx.addLine(to: CGPoint(x: p.x + rng.range(-2, 2), y: p.y + len)); ctx.strokePath()
+    ctx.setFillColor(ink)
+    ctx.fillEllipse(in: CGRect(x: p.x - w * 0.9, y: p.y + len - w * 0.6, width: w * 1.8, height: w * 2.0))
+}
+// Éclaboussures
+for _ in 0..<70 {
+    let a = rng.range(0, 2 * CGFloat.pi), r = rng.range(250, 420)
+    let x = 512 + cos(a) * r, y = 512 + sin(a) * r * 0.95
+    let d = rng.range(1.5, 6.5)
+    ctx.setFillColor(ink)
+    ctx.fillEllipse(in: CGRect(x: x - d, y: y - d, width: d * 2, height: d * 2))
+}
+ctx.restoreGState()
 
 // MARK: Export
 let image = ctx.makeImage()!
