@@ -4,6 +4,7 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let engine = HostEngine()
+    private let updater = Updater()
     private let defaults = UserDefaults.standard
 
     private var window: NSWindow!
@@ -45,7 +46,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 pluginPopup.selectItem(withTitle: Self.title(comp))
                 await loadPlugin(comp)
             }
+            await updater.checkAtLaunch { [weak self] in self?.setStatus($0, error: false) }
         }
+    }
+
+    @objc private func checkForUpdates() {
+        Task { await updater.check(interactive: true) { [weak self] in self?.setStatus($0, error: false) } }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -62,6 +68,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appItem = NSMenuItem()
         main.addItem(appItem)
         let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "À propos de SimplePlug", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let update = appMenu.addItem(withTitle: "Rechercher des mises à jour…", action: #selector(checkForUpdates), keyEquivalent: "")
+        update.target = self
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quitter SimplePlug", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         NSApp.mainMenu = main

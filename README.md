@@ -56,6 +56,17 @@ cp -R build/SimplePlug.app /Applications/
 
 Tous les réglages, y compris l'état du plugin, sont mémorisés.
 
+## Mises à jour
+
+SimplePlug vérifie les nouvelles releases GitHub au lancement (au plus une fois par jour) et propose de
+les installer : téléchargement, vérification de l'app, remplacement et relance automatiques.
+Tu peux aussi le faire à la main : menu **SimplePlug › Rechercher des mises à jour…**
+
+- La vérification contacte `api.github.com` (une requête, sans donnée personnelle).
+- L'app doit être dans un dossier où tu as le droit d'écrire (ex. `/Applications`).
+- L'app n'étant pas notarisée, macOS peut redemander l'accès au micro après une mise à jour.
+- Les versions antérieures à 1.0.1 n'ont pas d'updater : installe la 1.0.1 à la main une fois.
+
 ## Limites
 
 - Effets AU uniquement (pas d'instruments).
