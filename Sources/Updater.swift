@@ -6,8 +6,8 @@ struct UpdateError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-/// Mise à jour via les releases GitHub : vérifie la dernière release, télécharge le .zip,
-/// vérifie l'app, remplace l'ancienne puis relance. Aucune dépendance externe.
+/// Updates through GitHub releases: checks the latest release, downloads the .zip,
+/// verifies the app, replaces the old one, then relaunches. No external dependency.
 @MainActor
 final class Updater {
     static let repo = "FLORIANSV35/SimplePlug"
@@ -31,9 +31,9 @@ final class Updater {
     static let arch = "x86_64"
     #endif
 
-    // MARK: Vérification
+    // MARK: Checking
 
-    /// Vérification automatique au lancement, au plus une fois par jour, silencieuse s'il n'y a rien.
+    /// Automatic check at launch, at most once a day, silent when there's nothing new.
     func checkAtLaunch(status: @escaping (String) -> Void) async {
         let last = UserDefaults.standard.double(forKey: Self.lastCheckKey)
         guard Date().timeIntervalSince1970 - last > Self.checkInterval else { return }
@@ -48,12 +48,12 @@ final class Updater {
             let release = try await fetchLatest()
             UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastCheckKey)
             guard Self.isNewer(release.tag_name, than: currentVersion) else {
-                if interactive { alert("Vous êtes à jour", "SimplePlug \(currentVersion) est la dernière version.") }
+                if interactive { alert("You're up to date", "SimplePlug \(currentVersion) is the latest version.") }
                 return
             }
             await offer(release, status: status)
         } catch {
-            if interactive { alert("Impossible de vérifier les mises à jour", error.localizedDescription) }
+            if interactive { alert("Couldn't check for updates", error.localizedDescription) }
         }
     }
 
@@ -64,7 +64,7 @@ final class Updater {
         request.timeoutInterval = 15
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw UpdateError("GitHub n'a pas répondu correctement (aucune release publiée ?).")
+            throw UpdateError("GitHub didn't respond correctly (no release published?).")
         }
         return try JSONDecoder().decode(Release.self, from: data)
     }
@@ -89,11 +89,11 @@ final class Updater {
         let notes = (release.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
         let a = NSAlert()
-        a.messageText = "SimplePlug \(release.tag_name.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))) est disponible"
-        a.informativeText = "Vous utilisez la version \(currentVersion)."
+        a.messageText = "SimplePlug \(release.tag_name.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))) is available"
+        a.informativeText = "You're using version \(currentVersion)."
             + (notes.isEmpty ? "" : "\n\n" + String(notes.prefix(600)))
-        a.addButton(withTitle: asset == nil ? "Ouvrir la page" : "Installer et relancer")
-        a.addButton(withTitle: "Plus tard")
+        a.addButton(withTitle: asset == nil ? "Open page" : "Install and relaunch")
+        a.addButton(withTitle: "Later")
         guard a.runModal() == .alertFirstButtonReturn else { return }
 
         guard let asset, let url = URL(string: asset.browser_download_url) else {
@@ -105,10 +105,10 @@ final class Updater {
         } catch {
             status("")
             let e = NSAlert()
-            e.messageText = "La mise à jour a échoué"
+            e.messageText = "The update failed"
             e.informativeText = error.localizedDescription
-            e.addButton(withTitle: "Ouvrir la page de téléchargement")
-            e.addButton(withTitle: "Fermer")
+            e.addButton(withTitle: "Open download page")
+            e.addButton(withTitle: "Close")
             if e.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(URL(string: release.html_url)!) }
         }
     }
@@ -122,17 +122,17 @@ final class Updater {
 
     // MARK: Installation
 
-    /// Télécharge, vérifie, puis remplace `destination` par la nouvelle app et relance.
+    /// Downloads, verifies, then replaces `destination` with the new app and relaunches.
     func install(from zipURL: URL, version: String,
                  destination: URL = Bundle.main.bundleURL,
                  terminate: @escaping @MainActor () -> Void = { NSApp.terminate(nil) },
                  status: @escaping (String) -> Void) async throws {
         let fm = FileManager.default
         if destination.path.contains("/AppTranslocation/") {
-            throw UpdateError("L'app tourne depuis un dossier temporaire protégé par macOS. Déplace SimplePlug.app dans Applications, relance-la, puis réessaie.")
+            throw UpdateError("The app is running from a temporary folder protected by macOS. Move SimplePlug.app to Applications, relaunch it, then try again.")
         }
         guard fm.isWritableFile(atPath: destination.deletingLastPathComponent().path) else {
-            throw UpdateError("Pas le droit d'écrire dans « \(destination.deletingLastPathComponent().path) ».")
+            throw UpdateError("No permission to write to “\(destination.deletingLastPathComponent().path)”.")
         }
 
         let work = fm.temporaryDirectory.appendingPathComponent("SimplePlugUpdate-\(UUID().uuidString)")
@@ -140,31 +140,31 @@ final class Updater {
         var handedOff = false
         defer { if !handedOff { try? fm.removeItem(at: work) } }
 
-        status("Téléchargement de la mise à jour…")
+        status("Downloading the update…")
         let (tmp, response) = try await URLSession.shared.download(from: zipURL)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw UpdateError("Téléchargement impossible (HTTP \(http.statusCode)).")
+            throw UpdateError("Download failed (HTTP \(http.statusCode)).")
         }
         let zip = work.appendingPathComponent("update.zip")
         try fm.moveItem(at: tmp, to: zip)
 
-        status("Vérification de la mise à jour…")
+        status("Verifying the update…")
         let extracted = work.appendingPathComponent("extracted")
         guard await run("/usr/bin/ditto", ["-x", "-k", zip.path, extracted.path]) == 0 else {
-            throw UpdateError("Archive illisible.")
+            throw UpdateError("Unreadable archive.")
         }
         let newApp = extracted.appendingPathComponent(destination.lastPathComponent)
         guard let bundle = Bundle(url: newApp),
               bundle.bundleIdentifier == (Bundle(url: destination)?.bundleIdentifier ?? bundle.bundleIdentifier),
               let newVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
               Self.isNewer(newVersion, than: currentVersion) else {
-            throw UpdateError("L'archive ne contient pas une version plus récente de SimplePlug.")
+            throw UpdateError("The archive doesn't contain a newer version of SimplePlug.")
         }
         guard await run("/usr/bin/codesign", ["--verify", "--deep", "--strict", newApp.path]) == 0 else {
-            throw UpdateError("La signature de la nouvelle version est invalide.")
+            throw UpdateError("The new version's signature is invalid.")
         }
 
-        // Le remplacement se fait après la fermeture de l'app, par un petit script détaché.
+        // The replacement happens after the app quits, via a small detached script.
         let script = work.appendingPathComponent("replace.sh")
         try """
         #!/bin/sh
@@ -192,7 +192,7 @@ final class Updater {
         try p.run()
         handedOff = true
 
-        status("Installation de la version \(newVersion)… l'app va se relancer.")
+        status("Installing version \(newVersion)… the app will relaunch.")
         terminate()
     }
 

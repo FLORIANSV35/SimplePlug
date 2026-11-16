@@ -13,7 +13,7 @@ namespace
         return d.manufacturerName + ": " + d.name;
     }
 
-    /** Force le bus principal en stéréo (et désactive les bus annexes, ex. sidechain). */
+    /** Forces the main bus to stereo (and disables auxiliary buses, e.g. sidechain). */
     bool configureStereo (juce::AudioPluginInstance& p)
     {
         auto layout = p.getBusesLayout();
@@ -32,8 +32,8 @@ namespace
 }
 
 //==============================================================================
-/** Analyse les dossiers VST3 dans un thread. Un fichier « dead man's pedal » mémorise le plugin en cours
-    d'analyse : s'il plante l'application, il sera ignoré au prochain essai. */
+/** Scans the VST3 folders on a thread. A "dead man's pedal" file remembers the plugin being scanned:
+    if it crashes the application, it is skipped on the next attempt. */
 class MainComponent::PluginScanner final : public juce::Thread
 {
 public:
@@ -78,7 +78,7 @@ MainComponent::MainComponent (juce::ApplicationProperties& properties) : props (
     if (auto xml = settings.getXmlValue ("knownPlugins"))
         knownPlugins.recreateFromXml (*xml);
 
-    // Interface audio : exactement 2 entrées / 2 sorties.
+    // Audio interface: exactly 2 inputs / 2 outputs.
     const auto savedDevice = settings.getXmlValue ("audioDevice");
     const auto error = deviceManager.initialise (2, 2, savedDevice.get(), true);
     deviceManager.addChangeListener (this);
@@ -90,15 +90,15 @@ MainComponent::MainComponent (juce::ApplicationProperties& properties) : props (
     selector->addComponentListener (this);
     addAndMakeVisible (*selector);
 
-    styleTitle (loadTitle, T8 ("Charge buffer"));
-    styleTitle (latencyTitle, T8 ("Latence"));
-    styleTitle (pluginRowTitle, T8 ("Plugin VST3"));
+    styleTitle (loadTitle, "Buffer load");
+    styleTitle (latencyTitle, "Latency");
+    styleTitle (pluginRowTitle, "VST3 plugin");
     for (auto* l : { &loadTitle, &latencyTitle, &pluginRowTitle })
         addAndMakeVisible (*l);
 
     addAndMakeVisible (gauge);
     loadLabel.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 13.0f, juce::Font::plain)));
-    loadLabel.setTooltip (T8 ("Temps de calcul / durée du buffer. Au-delà de 100 %, l'audio craque (« dépassement »)."));
+    loadLabel.setTooltip (T8 ("Compute time / buffer duration. Above 100 %, the audio crackles (an \xe2\x80\x9coverrun\xe2\x80\x9d)."));
     gauge.setTooltip (loadLabel.getTooltip());
     latencyLabel.setColour (juce::Label::textColourId, juce::Colours::grey);
     loadLabel.setColour (juce::Label::textColourId, juce::Colours::grey);
@@ -106,7 +106,7 @@ MainComponent::MainComponent (juce::ApplicationProperties& properties) : props (
         addAndMakeVisible (*l);
 
     addAndMakeVisible (pluginBox);
-    pluginBox.setTextWhenNothingSelected (T8 ("Aucun (signal direct)"));
+    pluginBox.setTextWhenNothingSelected ("None (pass-through)");
     pluginBox.onChange = [this]
     {
         const int index = pluginBox.getSelectedId() - 2;
@@ -114,12 +114,12 @@ MainComponent::MainComponent (juce::ApplicationProperties& properties) : props (
         loadSelectedPlugin();
     };
 
-    rescanButton.setButtonText (T8 ("Rescanner"));
-    rescanButton.setTooltip (T8 ("Rechercher à nouveau les plugins VST3 installés"));
+    rescanButton.setButtonText ("Rescan");
+    rescanButton.setTooltip ("Scan again for installed VST3 plugins");
     rescanButton.onClick = [this] { startScan(); };
     addAndMakeVisible (rescanButton);
 
-    updateButton.setButtonText (T8 ("Mises à jour"));
+    updateButton.setButtonText ("Updates");
     updateButton.onClick = [this] { checkForUpdates (true); };
     addAndMakeVisible (updateButton);
 
@@ -244,17 +244,17 @@ void MainComponent::refreshStatus()
     if (device == nullptr)
     {
         latencyLabel.setText ({}, juce::dontSendNotification);
-        setStatus (T8 ("Aucune interface audio ouverte."), true);
+        setStatus ("No audio interface open.", true);
         return;
     }
 
     const double rate = device->getCurrentSampleRate();
     const double latencyMs = (device->getInputLatencyInSamples() + device->getOutputLatencyInSamples()) / rate * 1000.0;
-    latencyLabel.setText (T8 ("\xe2\x89\x88 ") + juce::String (latencyMs, 1) + T8 (" ms (aller-retour)"), juce::dontSendNotification);
+    latencyLabel.setText (T8 ("\xe2\x89\x88 ") + juce::String (latencyMs, 1) + " ms (round trip)", juce::dontSendNotification);
 
     if (! loading)
-        setStatus (T8 ("En marche \xe2\x80\x94 ") + juce::String (juce::roundToInt (rate)) + " Hz, "
-                       + juce::String (device->getCurrentBufferSizeSamples()) + T8 (" \xc3\xa9" "chantillons \xe2\x80\x94 ")
+        setStatus (T8 ("Running \xe2\x80\x94 ") + juce::String (juce::roundToInt (rate)) + " Hz, "
+                       + juce::String (device->getCurrentBufferSizeSamples()) + T8 (" samples \xe2\x80\x94 ")
                        + device->getName(),
                    false);
 }
@@ -273,7 +273,7 @@ void MainComponent::timerCallback()
     if (! r.valid)
         return;
 
-    // Montée immédiate, descente lissée ; le pic est maintenu 1,5 s.
+    // Instant rise, smoothed fall; the peak is held for 1.5 s.
     shownLoad = juce::jmax (r.average, shownLoad * 0.85);
     const double now = juce::Time::getMillisecondCounterHiRes();
     if (r.peak >= peakHold || now - peakHoldSince > 1500.0)
@@ -284,10 +284,10 @@ void MainComponent::timerCallback()
 
     gauge.setValue (shownLoad);
 
-    auto text = juce::String::formatted ("%3.0f %%  (pic %3.0f %%)", shownLoad * 100.0, peakHold * 100.0);
+    auto text = juce::String::formatted ("%3.0f %%  (peak %3.0f %%)", shownLoad * 100.0, peakHold * 100.0);
     const int overloads = meter.overloads();
     if (overloads > 0)
-        text += "  (!) " + juce::String (overloads) + T8 (" d\xc3\xa9passement") + (overloads > 1 ? "s" : "");
+        text += "  (!) " + juce::String (overloads) + " overrun" + (overloads > 1 ? "s" : "");
     loadLabel.setText (text, juce::dontSendNotification);
     loadLabel.setColour (juce::Label::textColourId, overloads > 0 ? juce::Colour (0xfff85149) : juce::Colours::grey);
 }
@@ -306,7 +306,7 @@ void MainComponent::startScan()
         return;
 
     rescanButton.setEnabled (false);
-    setStatus (T8 ("Analyse des plugins VST3\xe2\x80\xa6"), false);
+    setStatus (T8 ("Scanning VST3 plugins\xe2\x80\xa6"), false);
 
     juce::Component::SafePointer<MainComponent> safe (this);
     auto* format = formatManager.getFormats().getFirst();
@@ -319,7 +319,7 @@ void MainComponent::startScan()
             juce::MessageManager::callAsync ([safe, file]
             {
                 if (safe != nullptr)
-                    safe->setStatus (T8 ("Analyse : ") + juce::File::createFileWithoutCheckingPath (file).getFileName(), false);
+                    safe->setStatus ("Scanning: " + juce::File::createFileWithoutCheckingPath (file).getFileName(), false);
             });
         },
         [safe]
@@ -353,7 +353,7 @@ void MainComponent::refreshEffects()
                { return titleOf (a).compareNatural (titleOf (b), false) < 0; });
 
     pluginBox.clear (juce::dontSendNotification);
-    pluginBox.addItem (T8 ("Aucun (signal direct)"), 1);
+    pluginBox.addItem ("None (pass-through)", 1);
     pluginBox.addSeparator();
     for (size_t i = 0; i < effects.size(); ++i)
         pluginBox.addItem (titleOf (effects[i]), (int) i + 2);
@@ -382,7 +382,7 @@ void MainComponent::loadSelectedPlugin()
     const auto desc = effects[(size_t) index];
     loading = true;
     pluginBox.setEnabled (false);
-    setStatus (T8 ("Chargement de \xc2\xab ") + desc.name + T8 (" \xc2\xbb\xe2\x80\xa6"), false);
+    setStatus (T8 ("Loading \xe2\x80\x9c") + desc.name + T8 ("\xe2\x80\x9d\xe2\x80\xa6"), false);
 
     auto* device = deviceManager.getCurrentAudioDevice();
     const double rate = device != nullptr ? device->getCurrentSampleRate() : 48000.0;
@@ -402,19 +402,19 @@ void MainComponent::pluginLoaded (const juce::PluginDescription& desc, int token
                                   std::unique_ptr<juce::AudioPluginInstance> instance, const juce::String& error)
 {
     if (token != loadToken)
-        return; // une sélection plus récente est en cours
+        return; // a more recent selection is in progress
 
     loading = false;
     pluginBox.setEnabled (true);
 
     if (instance == nullptr)
     {
-        setStatus (T8 ("Impossible de charger le plugin : ") + error, true);
+        setStatus ("Couldn't load the plugin: " + error, true);
         return;
     }
     if (! configureStereo (*instance))
     {
-        setStatus (T8 ("Ce plugin n'accepte pas 2 entr\xc3\xa9" "es / 2 sorties."), true);
+        setStatus ("This plugin doesn't support 2 inputs / 2 outputs.", true);
         return;
     }
 
@@ -441,7 +441,7 @@ void MainComponent::pluginLoaded (const juce::PluginDescription& desc, int token
     updateSize();
     refreshStatus();
 
-    // Le premier buffer après le chargement est toujours plus long : on ne le compte pas comme une coupure.
+    // The first buffer after loading is always longer: don't count it as a dropout.
     juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<MainComponent> (this)]
                                  { if (safe != nullptr) safe->meter.resetOverloads(); });
 }
@@ -485,19 +485,19 @@ void MainComponent::checkForUpdates (bool interactive)
 
         if (! r.ok)
         {
-            info (T8 ("Impossible de v\xc3\xa9rifier les mises \xc3\xa0 jour"), T8 ("GitHub n'a pas r\xc3\xa9pondu."));
+            info ("Couldn't check for updates", "GitHub didn't respond.");
             return;
         }
         safe->props.getUserSettings()->setValue ("lastUpdateCheck", (double) juce::Time::currentTimeMillis());
 
         if (! UpdateChecker::isNewer (r.tag, version))
         {
-            info (T8 ("Vous \xc3\xaates \xc3\xa0 jour"), "SimplePlug " + version + T8 (" est la derni\xc3\xa8re version."));
+            info ("You're up to date", "SimplePlug " + version + " is the latest version.");
             return;
         }
         if (r.downloadUrl.isEmpty())
         {
-            info (T8 ("Mise \xc3\xa0 jour"), T8 ("La version ") + r.tag + T8 (" existe, mais sans build Windows pour le moment."));
+            info ("Update", "Version " + r.tag.trimCharactersAtStart ("vV") + " exists, but has no Windows build yet.");
             return;
         }
 
@@ -505,10 +505,10 @@ void MainComponent::checkForUpdates (bool interactive)
         juce::AlertWindow::showAsync (
             juce::MessageBoxOptions()
                 .withIconType (juce::MessageBoxIconType::InfoIcon)
-                .withTitle ("SimplePlug " + r.tag.trimCharactersAtStart ("vV") + T8 (" est disponible"))
-                .withMessage (T8 ("Vous utilisez la version ") + version + T8 (".\n\nT\xc3\xa9l\xc3\xa9" "charger la mise \xc3\xa0 jour ?"))
-                .withButton (T8 ("T\xc3\xa9l\xc3\xa9" "charger"), 1)
-                .withButton (T8 ("Plus tard"), 0),
+                .withTitle ("SimplePlug " + r.tag.trimCharactersAtStart ("vV") + " is available")
+                .withMessage ("You're using version " + version + ".\n\nDownload the update?")
+                .withButton ("Download", 1)
+                .withButton ("Later", 0),
             [url] (int result)
             {
                 if (result == 1)

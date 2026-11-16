@@ -2,8 +2,8 @@ import AVFoundation
 import AppKit
 import CoreAudioKit
 
-/// Récupère l'interface graphique d'un plugin AU :
-/// 1. vue AUv3 (requestViewController), 2. vue Cocoa AUv2, 3. vue générique.
+/// Gets the graphical interface of an AU plugin:
+/// 1. AUv3 view (requestViewController), 2. AUv2 Cocoa view, 3. generic view.
 @MainActor
 enum PluginView {
     static func make(for unit: AVAudioUnit) async -> NSView {
@@ -28,7 +28,7 @@ enum PluginView {
 
     private static var controllerKey = 0
 
-    /// Vue Cocoa fournie par un plugin AUv2 (kAudioUnitProperty_CocoaUI).
+    /// Cocoa view provided by an AUv2 plugin (kAudioUnitProperty_CocoaUI).
     private static func cocoaView(for unit: AudioUnit) -> NSView? {
         var size: UInt32 = 0
         var writable: DarwinBoolean = false
@@ -47,7 +47,7 @@ enum PluginView {
         guard let bundle = Bundle(url: bundleURL), bundle.load(),
               let factoryClass = bundle.classNamed(className) as? NSObject.Type,
               factoryClass.instancesRespond(to: selector) else { return nil }
-        // AUCocoaUIBase n'est pas exposé en Swift : appel direct de -uiViewForAudioUnit:withSize:.
+        // AUCocoaUIBase isn't exposed in Swift: call -uiViewForAudioUnit:withSize: directly.
         let factory = factoryClass.init()
         typealias Factory = @convention(c) (AnyObject, Selector, AudioUnit, NSSize) -> Unmanaged<NSView>?
         let imp = unsafeBitCast(factory.method(for: selector), to: Factory.self)

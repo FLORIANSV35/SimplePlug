@@ -8,8 +8,8 @@ struct HostError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-/// Moteur audio : une seule unité HAL (interface choisie, 2 in / 2 out) qui fait passer
-/// l'entrée dans le plugin AU puis vers la sortie. Pas de AVAudioEngine → buffer maîtrisé.
+/// Audio engine: a single HAL unit (chosen interface, 2 in / 2 out) that passes the input
+/// through the AU plugin to the output. No AVAudioEngine → full control over the buffer size.
 final class HostEngine {
     static let maxFrames: UInt32 = 8192
 
@@ -21,14 +21,14 @@ final class HostEngine {
     private var pullBlock: AURenderPullInputBlock?
     private var inputList: UnsafeMutableAudioBufferListPointer?
 
-    /// Compteurs de diagnostic (écrits par le thread audio, lus pour debug).
+    /// Diagnostic counters (written by the audio thread, read for debugging).
     struct Stats { var callbacks = 0, inputErrors = 0, pluginErrors = 0
                    var lastInputError: OSStatus = 0, lastPluginError: OSStatus = 0
                    var lastFrames: UInt32 = 0 }
     private(set) var stats = Stats()
 
-    // Jauge de charge : temps passé dans le callback / durée du buffer (1.0 = 100 % = coupure).
-    // Écrit par le thread audio, lu et remis à zéro par l'interface (valeurs simples, course sans danger).
+    // Load gauge: time spent in the callback / buffer duration (1.0 = 100 % = dropout).
+    // Written by the audio thread, read and reset by the UI (plain values, harmless race).
     private var currentRate: Double = 48000
     private var loadSum: Double = 0, loadMax: Double = 0, loadCount = 0
     private(set) var overloads = 0
@@ -38,7 +38,7 @@ final class HostEngine {
         return Double(t.numer) / Double(t.denom) * 1e-9
     }()
 
-    /// Charge moyenne et crête depuis le dernier appel (nil s'il n'y a eu aucun buffer).
+    /// Average and peak load since the last call (nil if no buffer was processed).
     func readLoad() -> (average: Double, peak: Double)? {
         let n = loadCount, sum = loadSum, peak = loadMax
         loadCount = 0; loadSum = 0; loadMax = 0
@@ -69,8 +69,8 @@ final class HostEngine {
             guard let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 2) else {
                 throw HostError("Format audio invalide")
             }
-            // Les plugins AUv2 arrivent avec le bus d'entrée désactivé : sans ça, ils ne demandent
-            // jamais d'entrée et rendent du silence.
+            // AUv2 plugins come with their input bus disabled: without this they never ask for
+            // input and render silence.
             if au.inputBusses.count > 0 {
                 au.inputBusses[0].isEnabled = true
                 try au.inputBusses[0].setFormat(format)
@@ -79,12 +79,12 @@ final class HostEngine {
             au.maximumFramesToRender = Self.maxFrames
             try au.allocateRenderResources()
         } catch {
-            throw HostError("Ce plugin n'accepte pas 2 entrées / 2 sorties à \(Int(rate)) Hz (\(error.localizedDescription))")
+            throw HostError("This plugin doesn't support 2 inputs / 2 outputs at \(Int(rate)) Hz (\(error.localizedDescription))")
         }
         renderBlock = au.renderBlock
     }
 
-    // MARK: Démarrage / arrêt
+    // MARK: Start / stop
 
     func start(device: AudioDeviceID, bufferFrames: UInt32, sampleRate: Double) throws {
         stop()
@@ -123,7 +123,7 @@ final class HostEngine {
     }
 
     private func check(_ status: OSStatus, _ what: String) throws {
-        guard status == noErr else { throw HostError("\(what) (erreur CoreAudio \(status))") }
+        guard status == noErr else { throw HostError("\(what) (CoreAudio error \(status))") }
     }
 
     private func startHAL(device: AudioDeviceID, rate: Double) throws {
@@ -131,35 +131,35 @@ final class HostEngine {
                                              componentSubType: kAudioUnitSubType_HALOutput,
                                              componentManufacturer: kAudioUnitManufacturer_Apple,
                                              componentFlags: 0, componentFlagsMask: 0)
-        guard let comp = AudioComponentFindNext(nil, &desc) else { throw HostError("Unité HAL introuvable") }
+        guard let comp = AudioComponentFindNext(nil, &desc) else { throw HostError("HAL unit not found") }
         var unitOpt: AudioUnit?
-        try check(AudioComponentInstanceNew(comp, &unitOpt), "Création de l'unité audio")
-        guard let unit = unitOpt else { throw HostError("Unité audio nulle") }
+        try check(AudioComponentInstanceNew(comp, &unitOpt), "Creating the audio unit")
+        guard let unit = unitOpt else { throw HostError("Audio unit is null") }
         hal = unit
 
         var on: UInt32 = 1
         let u32 = UInt32(MemoryLayout<UInt32>.size)
-        try check(AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &on, u32), "Activation de l'entrée")
-        try check(AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, &on, u32), "Activation de la sortie")
+        try check(AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &on, u32), "Enabling input")
+        try check(AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, &on, u32), "Enabling output")
 
         var dev = device
         try check(AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &dev,
-                                       UInt32(MemoryLayout<AudioDeviceID>.size)), "Sélection de l'interface")
+                                       UInt32(MemoryLayout<AudioDeviceID>.size)), "Selecting the interface")
 
-        // Format côté client : 2 canaux float non entrelacés (les 2 premiers canaux de l'interface).
+        // Client-side format: 2 non-interleaved float channels (the interface's first 2 channels).
         var asbd = AudioStreamBasicDescription(
             mSampleRate: rate, mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved,
             mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4,
             mChannelsPerFrame: 2, mBitsPerChannel: 32, mReserved: 0)
         let asbdSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
-        try check(AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &asbd, asbdSize), "Format d'entrée")
-        try check(AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &asbd, asbdSize), "Format de sortie")
+        try check(AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &asbd, asbdSize), "Input format")
+        try check(AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &asbd, asbdSize), "Output format")
 
         var maxFrames = Self.maxFrames
-        try check(AudioUnitSetProperty(unit, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &maxFrames, u32), "Taille max de buffer")
+        try check(AudioUnitSetProperty(unit, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &maxFrames, u32), "Maximum buffer size")
 
-        // Tampon d'entrée pré-alloué (hors temps réel).
+        // Pre-allocated input buffer (outside real time).
         let list = AudioBufferList.allocate(maximumBuffers: 2)
         for i in 0..<2 {
             let bytes = Int(Self.maxFrames) * MemoryLayout<Float>.size
@@ -169,7 +169,7 @@ final class HostEngine {
         }
         inputList = list
 
-        // Bloc qui fournit l'entrée au plugin (créé une fois, aucune allocation dans le callback).
+        // Block that feeds the input to the plugin (created once, no allocation in the callback).
         let src = list
         pullBlock = { _, _, frames, bus, abl in
             guard bus == 0 else { return kAudioUnitErr_NoConnection }
@@ -185,13 +185,13 @@ final class HostEngine {
         var callback = AURenderCallbackStruct(inputProc: halRenderCallback,
                                               inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
         try check(AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback,
-                                       UInt32(MemoryLayout<AURenderCallbackStruct>.size)), "Callback audio")
+                                       UInt32(MemoryLayout<AURenderCallbackStruct>.size)), "Audio callback")
 
-        try check(AudioUnitInitialize(unit), "Initialisation de l'interface")
-        try check(AudioOutputUnitStart(unit), "Démarrage de l'interface")
+        try check(AudioUnitInitialize(unit), "Initializing the interface")
+        try check(AudioOutputUnitStart(unit), "Starting the interface")
     }
 
-    // MARK: Temps réel
+    // MARK: Real time
 
     fileprivate func render(flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>,
                             time: UnsafePointer<AudioTimeStamp>,
@@ -228,7 +228,7 @@ final class HostEngine {
             stats.pluginErrors += 1
             stats.lastPluginError = st
         }
-        // Pas de plugin (ou erreur) : l'entrée passe telle quelle.
+        // No plugin (or error): the input passes through unchanged.
         for i in 0..<min(out.count, input.count) {
             if let d = out[i].mData, let s = input[i].mData { memcpy(d, s, bytes) }
         }

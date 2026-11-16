@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       attach_to_tag:
-        description: "Tag de release à laquelle joindre le zip (ex. v1.0.2). Vide = rien n'est publié."
+        description: "Release tag to attach the zip to (e.g. V26.11.12). Empty = nothing is published."
         required: false
         default: ''
 
@@ -20,12 +20,20 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write   # uniquement pour joindre le zip à une release existante
+      contents: write   # only needed to attach the zip to an existing release
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the version YY.MM.XX counts the commits of the month
+
+      - name: Version
+        shell: bash
+        env:
+          TZ: Europe/Paris   # same month boundaries as local builds
+        run: echo "VERSION=$(./version.sh --plain)" >> "$GITHUB_ENV"
 
       - name: Configure
-        run: cmake -S windows -B build -A x64
+        run: cmake -S windows -B build -A x64 -DSIMPLEPLUG_VERSION=${{ env.VERSION }}
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -33,8 +41,7 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $ver = (Select-String -Path windows/CMakeLists.txt -Pattern 'project\(SimplePlug VERSION ([0-9.]+)').Matches[0].Groups[1].Value
-          $name = "SimplePlug-$ver-windows-x64"
+          $name = "SimplePlug-V$env:VERSION-windows-x64"
           New-Item -ItemType Directory -Path "dist/$name" | Out-Null
           Copy-Item build/SimplePlug_artefacts/Release/SimplePlug.exe "dist/$name/"
           Copy-Item windows/README.md, windows/LICENSE "dist/$name/"
@@ -46,7 +53,7 @@ jobs:
           name: SimplePlug-windows-x64
           path: dist/*.zip
 
-      - name: Joindre à la release
+      - name: Attach to the release
         if: ${{ inputs.attach_to_tag != '' }}
         shell: pwsh
         env:

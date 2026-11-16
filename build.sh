@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compile SimplePlug.app (nécessite seulement les Command Line Tools : xcode-select --install)
+# Builds SimplePlug.app (only needs the Command Line Tools: xcode-select --install)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -14,9 +14,12 @@ swiftc -O -swift-version 5 \
     -framework AudioToolbox -framework CoreAudioKit \
     -o "$APP/Contents/MacOS/SimplePlug"
 
+# Version YY.MM.XX computed from the git history (see version.sh); stamped into the built Info.plist.
+VERSION="$(./version.sh --plain 2>/dev/null || echo 0.0.0)"
 cp Info.plist "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
 cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$APP"
 
-echo "OK → $APP"
-echo "Lancer : open \"$APP\""
+echo "OK → $APP (version $VERSION)"
+echo "Run: open \"$APP\""

@@ -4,8 +4,8 @@
 #include <juce_events/juce_events.h>
 #include <functional>
 
-/** Interroge la dernière release GitHub (une requête HTTPS, sans donnée personnelle).
-    Ne télécharge ni n'installe rien : l'utilisateur est renvoyé vers le téléchargement. */
+/** Queries the latest GitHub release (one HTTPS request, no personal data).
+    Downloads and installs nothing: the user is sent to the download page. */
 class UpdateChecker final : private juce::Thread
 {
 public:
@@ -15,13 +15,13 @@ public:
     struct Result
     {
         bool ok = false;
-        juce::String tag, pageUrl, downloadUrl; // downloadUrl vide : pas (encore) de build Windows
+        juce::String tag, pageUrl, downloadUrl; // empty downloadUrl: no Windows build (yet)
     };
 
     UpdateChecker() : juce::Thread ("UpdateChecker") {}
     ~UpdateChecker() override { stopThread (3000); }
 
-    /** `callback` est appelé sur le thread des messages. */
+    /** `callback` is called on the message thread. */
     void check (std::function<void (Result)> callback)
     {
         if (isThreadRunning())

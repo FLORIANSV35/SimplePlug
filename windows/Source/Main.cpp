@@ -4,30 +4,6 @@
 
 namespace
 {
-    // Traduction française du sélecteur d'interface audio de JUCE.
-    const char* frenchStrings = R"LOC(
-language: French
-"Audio device type:" = "Type d'interface :"
-"Output:" = "Sortie :"
-"Input:" = "Entrée :"
-"Sample rate:" = "Fréquence :"
-"Audio buffer size:" = "Taille du buffer :"
-"Active output channels:" = "Canaux de sortie :"
-"Active input channels:" = "Canaux d'entrée :"
-"Device:" = "Interface :"
-"Control Panel" = "Panneau de contrôle"
-"Opens the device's own control panel" = "Ouvre le panneau de contrôle du pilote"
-"Test" = "Test"
-"Plays a test tone" = "Joue un son de test"
-"Reset Device" = "Réinitialiser"
-"Resets the audio interface - sometimes needed after changing a device's properties in its custom control panel" = "Réinitialise l'interface audio (parfois nécessaire après un changement dans son panneau de contrôle)"
-"Show advanced settings..." = "Réglages avancés..."
-"none" = "aucun"
-"(no audio input channels found)" = "(aucun canal d'entrée)"
-"(no audio output channels found)" = "(aucun canal de sortie)"
-"Error when trying to open audio device!" = "Impossible d'ouvrir l'interface audio !"
-)LOC";
-
     class MainWindow final : public juce::DocumentWindow
     {
     public:
@@ -63,7 +39,6 @@ public:
         options.folderName = getApplicationName();
         properties.setStorageParameters (options);
 
-        juce::LocalisedStrings::setCurrentMappings (new juce::LocalisedStrings (juce::String::fromUTF8 (frenchStrings), false));
 
         window = std::make_unique<MainWindow> (getApplicationName(), properties);
     }

@@ -1,6 +1,6 @@
-// Génère assets/icon-1024.png : « SIMPLE / PLUG » en lettres graffiti au pinceau, noir sur papier,
-// dans un cercle de pinceau avec coulures (clin d'œil à l'univers de « Simple Plan »).
-// Les lettres sont dessinées ici trait par trait (lettrage original), graine aléatoire fixe.
+// Generates assets/icon-1024.png: "SIMPLE / PLUG" in brushed graffiti lettering, black on paper,
+// inside a brush circle with drips (a wink at the world of "Simple Plan").
+// The letters are drawn here stroke by stroke (original lettering), fixed random seed.
 // Usage : swift assets/make_icon.swift assets/icon-1024.png
 import AppKit
 import CoreGraphics
@@ -30,7 +30,7 @@ func color(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {
 let ink = color(0x0e0d0f)
 let paperHex: UInt32 = 0xf4f2ed
 
-// MARK: Papier
+// MARK: Paper
 let tile = CGRect(x: 100, y: 100, width: 824, height: 824)
 let tilePath = CGPath(roundedRect: tile, cornerWidth: 188, cornerHeight: 188, transform: nil)
 
@@ -49,7 +49,7 @@ for _ in 0..<4200 {
     ctx.fillEllipse(in: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2))
 }
 
-// MARK: Outils de pinceau
+// MARK: Brush tools
 func spline(_ p: [CGPoint], samples: Int = 14) -> [CGPoint] {
     guard p.count > 2 else { return p }
     var out: [CGPoint] = []
@@ -86,7 +86,7 @@ func lineSamples(_ p: [CGPoint], step: CGFloat = 2) -> [CGPoint] {
     return out
 }
 
-/// Trace une ligne avec une brosse plate inclinée : épaisseur variable, bords irréguliers.
+/// Draws a line with a tilted flat brush: variable thickness, uneven edges.
 func brush(_ pts: [CGPoint], width: CGFloat, taper: Bool = false) {
     let dense = lineSamples(pts, step: 1.6)
     let n = dense.count
@@ -104,7 +104,7 @@ func brush(_ pts: [CGPoint], width: CGFloat, taper: Bool = false) {
         ctx.fillEllipse(in: CGRect(x: -w * 0.55, y: -w * 0.3, width: w * 1.1, height: w * 0.6))
         ctx.restoreGState()
     }
-    // brosse sèche : fines stries de papier le long du trait
+    // dry brush: thin paper streaks along the stroke
     if width > 14 {
         for _ in 0..<(n / 14) {
             let s = Int(rng.range(0, CGFloat(n - 2)))
@@ -125,7 +125,7 @@ func brush(_ pts: [CGPoint], width: CGFloat, taper: Bool = false) {
     }
 }
 
-// MARK: Lettres (coordonnées u: 0…0.8, v: 0 haut … 1 bas)
+// MARK: Letters (coordinates u: 0…0.8, v: 0 top … 1 bottom)
 struct Glyph { var strokes: [[CGPoint]]; var smooth: Bool }
 func P(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x, y: y) }
 
@@ -152,7 +152,7 @@ func drawWord(_ word: String, centerX: CGFloat, top: CGFloat, height H: CGFloat,
         let rot = rng.range(-0.05, 0.05), dy = rng.range(-H * 0.035, H * 0.035), sc = rng.range(0.95, 1.05)
         let cxg = x0 + H * 0.4, cyg = top + H / 2 + dy
         func map(_ p: CGPoint) -> CGPoint {
-            // italique + rotation + échelle propres à chaque lettre
+            // italic + rotation + scale specific to each letter
             let lx = (p.x - 0.4) * H * sc + (0.5 - p.y) * H * 0.16
             let ly = (p.y - 0.5) * H * sc
             let c = cos(rot), s = sin(rot)
@@ -162,7 +162,7 @@ func drawWord(_ word: String, centerX: CGFloat, top: CGFloat, height H: CGFloat,
             let mapped = stroke.map(map)
             brush(g.smooth ? spline(mapped) : mapped, width: H * penScale)
         }
-        // coulure possible sous la lettre
+        // possible drip under the letter
         if rng.next() < dripChance, let base = g.strokes.flatMap({ $0 }).max(by: { $0.y < $1.y }) {
             drips.append((map(P(base.x + rng.range(-0.05, 0.05), 1.0)), rng.range(30, dripMax)))
         }
@@ -170,7 +170,7 @@ func drawWord(_ word: String, centerX: CGFloat, top: CGFloat, height H: CGFloat,
     }
 }
 
-// MARK: Cercle de pinceau (coupé en haut et en bas comme sur un tampon)
+// MARK: Brush circle (cut at the top and bottom like a stamp)
 func ringArc(center: CGPoint, radius: CGFloat, from a0: CGFloat, to a1: CGFloat, width: CGFloat) {
     var pts: [CGPoint] = []
     let steps = 90
@@ -183,14 +183,14 @@ func ringArc(center: CGPoint, radius: CGFloat, from a0: CGFloat, to a1: CGFloat,
     brush(pts, width: width, taper: true)
 }
 let ringC = CGPoint(x: 512, y: 512)
-ringArc(center: ringC, radius: 362, from: CGFloat.pi * 1.10, to: CGFloat.pi * 1.90, width: 46)   // haut
-ringArc(center: ringC, radius: 362, from: CGFloat.pi * 0.10, to: CGFloat.pi * 0.90, width: 46)   // bas
+ringArc(center: ringC, radius: 362, from: CGFloat.pi * 1.10, to: CGFloat.pi * 1.90, width: 46)   // top
+ringArc(center: ringC, radius: 362, from: CGFloat.pi * 0.10, to: CGFloat.pi * 0.90, width: 46)   // bottom
 
-// MARK: Texte
+// MARK: Text
 drawWord("SIMPLE", centerX: 508, top: 336, height: 112, penScale: 0.25, dripChance: 0.2, dripMax: 44)
 drawWord("PLUG", centerX: 512, top: 508, height: 148, penScale: 0.25, dripChance: 0.6, dripMax: 120)
 
-// Coulures
+// Drips
 for (p, len) in drips {
     let w = rng.range(7, 11)
     ctx.setStrokeColor(ink); ctx.setLineCap(.round); ctx.setLineWidth(w)
@@ -198,7 +198,7 @@ for (p, len) in drips {
     ctx.setFillColor(ink)
     ctx.fillEllipse(in: CGRect(x: p.x - w * 0.9, y: p.y + len - w * 0.6, width: w * 1.8, height: w * 2.0))
 }
-// Éclaboussures
+// Splatters
 for _ in 0..<70 {
     let a = rng.range(0, 2 * CGFloat.pi), r = rng.range(250, 420)
     let x = 512 + cos(a) * r, y = 512 + sin(a) * r * 0.95

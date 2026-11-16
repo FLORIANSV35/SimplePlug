@@ -1,53 +1,57 @@
 <p align="center"><img src="../assets/icon-windows.png" width="128" alt="SimplePlug"></p>
 
-# SimplePlug pour Windows
+# SimplePlug for Windows
 
-Hôte minimal pour **un seul plugin VST3** (effet) en **2 entrées / 2 sorties**.
-Même principe que la version macOS (qui héberge un plugin AU : les Audio Units n'existent
-pas sous Windows, l'équivalent est le **VST3**).
+A minimal host for **a single VST3 plugin** (effect) with **2 inputs / 2 outputs**.
+Same idea as the macOS version (which hosts an AU plugin: Audio Units don't exist on Windows,
+the equivalent is **VST3**).
 
-Réglages : interface audio, fréquence d'échantillonnage et taille de buffer. Une jauge
-**Charge buffer** montre le temps de calcul par rapport à la durée d'un buffer
-(au-delà de 100 %, l'audio craque : augmente le buffer).
+Settings: audio interface, sample rate and buffer size. A **Buffer load** gauge shows compute
+time relative to the duration of one buffer (above 100 %, the audio crackles: increase the buffer).
 
-> Version **expérimentale** : compilée automatiquement par GitHub Actions, développée et
-> testée côté code sur macOS. Les retours sur de vraies interfaces Windows sont bienvenus.
+> **Experimental**: built automatically by GitHub Actions, developed and code-tested on macOS.
+> Feedback from real Windows audio interfaces is welcome.
 
-## Installation
+## Install
 
-1. Télécharge `SimplePlug-X.Y.Z-windows-x64.zip` (page *Releases*, ou artefact du dernier
-   build dans l'onglet *Actions*), dézippe-le où tu veux.
-2. Lance `SimplePlug.exe`. Comme le programme n'est pas signé, SmartScreen peut afficher
-   « Windows a protégé votre PC » : clique sur **Informations complémentaires › Exécuter quand même**.
-3. Aucune installation, aucun prérequis (le runtime C++ est inclus).
+1. Download `SimplePlug-V<version>-windows-x64.zip` (the *Releases* page, or the artifact of the
+   latest build in the *Actions* tab) and unzip it wherever you like.
+2. Run `SimplePlug.exe`. The program isn't signed, so SmartScreen may show
+   "Windows protected your PC": click **More info › Run anyway**.
+3. Nothing to install, no prerequisites (the C++ runtime is included).
 
-## Utilisation
+## Usage
 
-- **Type d'interface** : choisis **ASIO** si ton interface a un pilote ASIO (latence la plus faible).
-  Sinon *Windows Audio* (WASAPI) ou DirectSound. Le bouton « Panneau de contrôle » ouvre celui du pilote ASIO.
-- **Entrée / Sortie**, **Fréquence**, **Taille du buffer** : réglables directement. Seuls 2 canaux
-  (une paire stéréo) sont utilisés en entrée et en sortie.
-- **Plugin VST3** : la liste vient du scan de `C:\Program Files\Common Files\VST3`
-  (et du dossier utilisateur). Bouton **Rescanner** après avoir installé un plugin.
-  Si un plugin plante l'analyse, il est ignoré au lancement suivant.
-- Les réglages et l'état du plugin sont mémorisés (`%APPDATA%\SimplePlug`).
-- **Mises à jour** : l'app vérifie la dernière release GitHub (au plus une fois par jour) et
-  propose d'ouvrir le téléchargement. Pas d'installation automatique sous Windows.
+- **Audio device type**: pick **ASIO** if your interface has an ASIO driver (lowest latency).
+  Otherwise *Windows Audio* (WASAPI) or DirectSound. The "Control Panel" button opens the ASIO driver's own panel.
+- **Input / Output**, **Sample rate**, **Audio buffer size**: directly adjustable. Only 2 channels
+  (one stereo pair) are used for input and output.
+- **VST3 plugin**: the list comes from scanning `C:\Program Files\Common Files\VST3`
+  (and the user folder). Use **Rescan** after installing a plugin.
+  If a plugin crashes the scan, it is skipped at the next launch.
+- Settings and plugin state are remembered (`%APPDATA%\SimplePlug`).
+- **Updates**: the app checks the latest GitHub release (at most once a day) and offers to open the
+  download. There is no automatic install on Windows.
 
-## Compiler soi-même
+## Versions
 
-Prérequis : Visual Studio 2022 (charge de travail « Développement Desktop en C++ »), CMake ≥ 3.22, Git.
+`V<YY>.<MM>.<XX>`: year, month, number of commits made that month (resets every month).
+Computed by [`version.sh`](../version.sh); the CI passes it to CMake.
+
+## Build it yourself
+
+Prerequisites: Visual Studio 2022 ("Desktop development with C++" workload), CMake ≥ 3.22, Git.
 
 ```powershell
-cmake -S windows -B build -A x64
+cmake -S windows -B build -A x64 -DSIMPLEPLUG_VERSION=26.11.12   # version is optional (defaults to 0.0.0)
 cmake --build build --config Release
 # → build\SimplePlug_artefacts\Release\SimplePlug.exe
 ```
 
-JUCE 9.0.5 est téléchargé automatiquement par CMake.
+JUCE 9.0.5 is downloaded automatically by CMake.
 
-## Licence
+## License
 
-Cette version utilise le framework [JUCE](https://juce.com) sous licence **AGPLv3**
-(avec ses en-têtes ASIO fournis) ; son code source est donc distribué sous **GNU AGPL v3**,
-voir le fichier `LICENSE`. La version macOS (dossier `Sources/`) est indépendante.
+This version uses the [JUCE](https://juce.com) framework under the **AGPLv3** license
+(with its bundled ASIO headers); its source code is therefore distributed under the **GNU AGPL v3**,
+see the `LICENSE` file. The macOS version (the `Sources/` folder) is independent.

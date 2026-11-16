@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         static func state(_ plugin: String) -> String { "pluginState." + plugin }
     }
 
-    // MARK: Démarrage
+    // MARK: Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -68,18 +68,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         engine.stop()
     }
 
-    // MARK: Fenêtre
+    // MARK: Window
 
     private func buildMenu() {
         let main = NSMenu()
         let appItem = NSMenuItem()
         main.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "À propos de SimplePlug", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        let update = appMenu.addItem(withTitle: "Rechercher des mises à jour…", action: #selector(checkForUpdates), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About SimplePlug", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let update = appMenu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         update.target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quitter SimplePlug", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit SimplePlug", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         NSApp.mainMenu = main
     }
@@ -117,17 +117,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         loadGauge.heightAnchor.constraint(equalToConstant: 14).isActive = true
         loadLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         loadLabel.textColor = .secondaryLabelColor
-        loadLabel.toolTip = "Temps de calcul / durée du buffer. Au-delà de 100 %, l'audio craque (« dépassement »)."
+        loadLabel.toolTip = "Compute time / buffer duration. Above 100 %, the audio crackles (an “overrun”)."
         loadGauge.toolTip = loadLabel.toolTip
         let loadRow = NSStackView(views: [loadGauge, loadLabel])
         loadRow.spacing = 10
 
         let grid = NSGridView(views: [
-            [label("Interface audio"), devicePopup],
+            [label("Audio interface"), devicePopup],
             [label("Buffer"), bufferRow],
-            [label("Charge buffer"), loadRow],
-            [label("Fréquence"), ratePopup],
-            [label("Plugin AU"), pluginPopup],
+            [label("Buffer load"), loadRow],
+            [label("Sample rate"), ratePopup],
+            [label("AU plugin"), pluginPopup],
         ])
         grid.columnSpacing = 10
         grid.rowSpacing = 8
@@ -166,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setContentSize(content.fittingSize)
     }
 
-    // MARK: Interfaces / buffer / fréquence
+    // MARK: Interfaces / buffer / sample rate
 
     private var selectedInterface: AudioInterface? {
         interfaces.first { $0.uid == devicePopup.selectedItem?.representedObject as? String }
@@ -195,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let buffers = HAL.availableBuffers(device)
         for b in buffers {
-            bufferPopup.addItem(withTitle: "\(b) échantillons")
+            bufferPopup.addItem(withTitle: "\(b) samples")
             bufferPopup.lastItem?.tag = Int(b)
         }
         let savedBuffer = defaults.integer(forKey: Key.buffer)
@@ -236,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let interface = selectedInterface else {
             engine.stop()
             latencyLabel.stringValue = ""
-            setStatus("Aucune interface audio 2 entrées / 2 sorties détectée.", error: true)
+            setStatus("No audio interface with 2 inputs / 2 outputs found.", error: true)
             return
         }
         let buffer = UInt32(bufferPopup.selectedItem?.tag ?? 256)
@@ -244,12 +244,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         do {
             try engine.start(device: interface.id, bufferFrames: buffer, sampleRate: rate)
             if let ms = HAL.roundTripMilliseconds(interface.id) {
-                latencyLabel.stringValue = String(format: "latence ≈ %.1f ms", ms)
+                latencyLabel.stringValue = String(format: "latency ≈ %.1f ms", ms)
             }
             if micDenied {
-                setStatus("Accès à l'entrée audio refusé : Réglages Système › Confidentialité › Microphone.", error: true)
+                setStatus("Audio input access denied: System Settings › Privacy & Security › Microphone.", error: true)
             } else {
-                setStatus("En marche — entrées 1-2 → plugin → sorties 1-2", error: false)
+                setStatus("Running — inputs 1-2 → plugin → outputs 1-2", error: false)
             }
         } catch {
             latencyLabel.stringValue = ""
@@ -257,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    /// Jauge de charge : montée immédiate, descente lissée ; le pic est maintenu 1,5 s.
+    /// Load gauge: instant rise, smoothed fall; the peak is held for 1.5 s.
     private func updateMeter() {
         guard engine.isRunning else {
             loadGauge.doubleValue = 0
@@ -274,9 +274,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         loadGauge.doubleValue = min(shownLoad, 1)
 
-        var text = String(format: "%3.0f %%  (pic %3.0f %%)", shownLoad * 100, peakHold * 100)
+        var text = String(format: "%3.0f %%  (peak %3.0f %%)", shownLoad * 100, peakHold * 100)
         let overloads = engine.overloads
-        if overloads > 0 { text += "  ⚠︎ \(overloads) dépassement\(overloads > 1 ? "s" : "")" }
+        if overloads > 0 { text += "  ⚠︎ \(overloads) overrun\(overloads > 1 ? "s" : "")" }
         loadLabel.stringValue = text
         loadLabel.textColor = overloads > 0 ? .systemRed : .secondaryLabelColor
     }
@@ -305,7 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .sorted { Self.title($0).localizedCaseInsensitiveCompare(Self.title($1)) == .orderedAscending }
         desc.componentType = 0
         pluginPopup.removeAllItems()
-        pluginPopup.addItem(withTitle: "Aucun (signal direct)")
+        pluginPopup.addItem(withTitle: "None (pass-through)")
         pluginPopup.menu?.addItem(.separator())
         for c in components { pluginPopup.addItem(withTitle: Self.title(c)) }
     }
@@ -330,7 +330,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         fitWindow()
 
         if let component {
-            setStatus("Chargement de « \(component.name) »…", error: false)
+            setStatus("Loading “\(component.name)”…", error: false)
             do {
                 let unit = try await engine.loadPlugin(component.audioComponentDescription)
                 pluginKey = Self.key(component)
@@ -340,7 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 }
                 show(await PluginView.make(for: unit))
             } catch {
-                setStatus("Impossible de charger le plugin : \(error.localizedDescription)", error: true)
+                setStatus("Couldn't load the plugin: \(error.localizedDescription)", error: true)
                 return
             }
         }

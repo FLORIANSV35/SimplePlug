@@ -3,8 +3,8 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <atomic>
 
-/** Enveloppe un AudioIODeviceCallback et mesure sa charge : temps de calcul / durée du buffer
-    (1.0 = 100 % = coupure). Écrit par le thread audio, lu par l'interface. */
+/** Wraps an AudioIODeviceCallback and measures its load: compute time / buffer duration
+    (1.0 = 100 % = dropout). Written by the audio thread, read by the UI. */
 class MeteredCallback final : public juce::AudioIODeviceCallback
 {
 public:
@@ -16,7 +16,7 @@ public:
         bool valid = false;
     };
 
-    /** Charge moyenne et crête depuis la lecture précédente (thread de l'interface). */
+    /** Average and peak load since the previous read (UI thread). */
     Reading read()
     {
         const auto count = loadCount.load (std::memory_order_relaxed);
@@ -73,12 +73,12 @@ private:
     juce::AudioIODeviceCallback& target;
     double sampleRate = 0.0, ticksPerSecond = 1.0;
 
-    // Écrivain unique (thread audio) : sommes monotones, la lecture calcule des différences.
+    // Single writer (audio thread): monotonic sums, the reader computes differences.
     std::atomic<double> loadSum { 0.0 }, peak { 0.0 };
     std::atomic<juce::int64> loadCount { 0 };
     std::atomic<int> overloadCount { 0 };
 
-    // Côté lecture uniquement.
+    // Reader side only.
     double lastSum = 0.0;
     juce::int64 lastCount = 0;
 };

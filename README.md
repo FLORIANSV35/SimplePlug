@@ -4,81 +4,87 @@
 
 *No pads, no helmets… just plugs.*
 
-Hôte minimal pour **un seul plugin AU** (effet) en **2 entrées / 2 sorties**, pour macOS.
-Seuls réglages : interface audio, taille de buffer et fréquence d'échantillonnage.
+A minimal host for **a single AU plugin** (effect) with **2 inputs / 2 outputs**, for macOS.
+The only settings: audio interface, buffer size and sample rate.
 
-> **Windows** : voir [windows/README.md](windows/README.md) (hôte d'un plugin VST3, zip dans les *Releases*).
+> **Windows**: see [windows/README.md](windows/README.md) (hosts a VST3 plugin; zip in the *Releases*).
 
-## Installation
+## Install
 
-### 1. Prérequis
+### 1. Prerequisites
 
-Les Command Line Tools d'Apple (inutile d'installer Xcode) :
+Apple's Command Line Tools (no need to install Xcode):
 
 ```bash
 xcode-select --install
 ```
 
-### 2. Récupérer le projet
+### 2. Get the project
 
 ```bash
 git clone https://github.com/FLORIANSV35/SimplePlug.git
 cd SimplePlug
 ```
 
-### 3. Compiler
+### 3. Build
 
 ```bash
-chmod +x build.sh   # rend le script exécutable (une seule fois)
+chmod +x build.sh version.sh   # make the scripts executable (once)
 ./build.sh
 ```
 
-Le script compile l'app et la signe en ad-hoc. Résultat : `build/SimplePlug.app`.
+The script builds the app and ad-hoc signs it. Result: `build/SimplePlug.app`.
 
-### 4. Lancer
+### 4. Run
 
 ```bash
 open build/SimplePlug.app
 ```
 
-Au premier lancement, macOS demande l'accès au **micro** : accepte, c'est ce qui donne
-accès aux entrées de l'interface audio. Si tu as refusé par erreur :
-Réglages Système › Confidentialité et sécurité › Microphone.
+On first launch macOS asks for **microphone** access: accept, it's what gives access to the audio
+interface's inputs. If you refused by mistake:
+System Settings › Privacy & Security › Microphone.
 
-Pour l'avoir dans tes applications :
+To keep it with your applications:
 
 ```bash
 cp -R build/SimplePlug.app /Applications/
 ```
 
-> Si macOS bloque l'app (« développeur non identifié ») après l'avoir copiée ou téléchargée :
+> If macOS blocks the app ("unidentified developer") after you copied or downloaded it:
 > `xattr -dr com.apple.quarantine /Applications/SimplePlug.app`
 
-## Utilisation
+## Usage
 
-1. Choisis ton **interface audio** (au moins 2 in / 2 out ; canaux 1-2 utilisés).
-2. Règle le **buffer** et la **fréquence** (la latence aller-retour approximative s'affiche).
-   La jauge **Charge buffer** montre le temps de calcul par rapport à la durée d'un buffer :
-   moyenne, pic récent, et nombre de **dépassements** (au-delà de 100 %, l'audio craque).
-   Si elle monte trop haut, augmente le buffer.
-3. Choisis le **plugin AU** : son interface s'affiche dans la fenêtre.
+1. Pick your **audio interface** (at least 2 in / 2 out; channels 1-2 are used).
+2. Set the **buffer** and **sample rate** (the approximate round-trip latency is shown).
+   The **Buffer load** gauge shows compute time relative to the duration of one buffer:
+   average, recent peak, and the number of **overruns** (above 100 %, the audio crackles).
+   If it gets too high, increase the buffer.
+3. Pick the **AU plugin**: its interface appears in the window.
 
-Tous les réglages, y compris l'état du plugin, sont mémorisés.
+All settings, including the plugin's state, are remembered.
 
-## Mises à jour
+## Versions
 
-SimplePlug vérifie les nouvelles releases GitHub au lancement (au plus une fois par jour) et propose de
-les installer : téléchargement, vérification de l'app, remplacement et relance automatiques.
-Tu peux aussi le faire à la main : menu **SimplePlug › Rechercher des mises à jour…**
+Versions follow `V<YY>.<MM>.<XX>`: year, month, and the number of commits made during that month
+(resets every month), e.g. `V26.11.12`. They are computed from the git history by
+[`version.sh`](version.sh) and stamped into the app by `build.sh` (visible in *SimplePlug › About*).
 
-- La vérification contacte `api.github.com` (une requête, sans donnée personnelle).
-- L'app doit être dans un dossier où tu as le droit d'écrire (ex. `/Applications`).
-- L'app n'étant pas notarisée, macOS peut redemander l'accès au micro après une mise à jour.
-- Les versions antérieures à 1.0.1 n'ont pas d'updater : installe la 1.0.1 à la main une fois.
+## Updates
 
-## Limites
+SimplePlug checks the latest GitHub release at launch (at most once a day) and offers to install
+it: download, verification, replacement and relaunch are automatic.
+You can also do it by hand: **SimplePlug › Check for Updates…**
 
-- Effets AU uniquement (pas d'instruments).
-- Une seule interface pour l'entrée et la sortie.
-- Compilé pour l'architecture de la machine (arm64 ou x86_64) : un plugin d'une autre
-  architecture ne se chargera pas.
+- The check contacts `api.github.com` (one request, no personal data).
+- The app must be in a folder you can write to (e.g. `/Applications`).
+- Since the app isn't notarized, macOS may ask for microphone access again after an update.
+- Version 1.0.0 has no updater: install a newer release by hand once.
+
+## Limitations
+
+- AU effects only (no instruments).
+- A single interface for input and output.
+- Built for the machine's architecture (arm64 or x86_64): a plugin of another
+  architecture won't load.

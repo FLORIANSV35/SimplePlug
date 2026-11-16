@@ -6,7 +6,7 @@
 #include "MeteredCallback.h"
 #include "UpdateChecker.h"
 
-/** Jauge horizontale : vert, orange au-delà de 70 %, rouge au-delà de 90 %. */
+/** Horizontal gauge: green, orange above 70 %, red above 90 %. */
 class LoadGauge final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -31,7 +31,7 @@ private:
     double value = 0.0;
 };
 
-/** Fenêtre principale : réglages d'interface audio + un seul plugin VST3 en 2 entrées / 2 sorties. */
+/** Main window: audio interface settings + a single VST3 plugin in 2 inputs / 2 outputs. */
 class MainComponent final : public juce::Component,
                             private juce::Timer,
                             private juce::ChangeListener,
@@ -47,7 +47,7 @@ public:
 private:
     class PluginScanner;
 
-    // Interface
+    // UI
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void componentMovedOrResized (juce::Component&, bool wasMoved, bool wasResized) override;
@@ -64,7 +64,7 @@ private:
     void unloadPlugin();
     void savePluginState();
 
-    // Mises à jour
+    // Updates
     void checkForUpdates (bool interactive);
 
     juce::ApplicationProperties& props;

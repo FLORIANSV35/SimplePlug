@@ -1,7 +1,7 @@
 import CoreAudio
 import Foundation
 
-/// Une interface audio utilisable : au moins 2 entrées ET 2 sorties.
+/// A usable audio interface: at least 2 inputs AND 2 outputs.
 struct AudioInterface {
     let id: AudioDeviceID
     let uid: String
@@ -10,7 +10,7 @@ struct AudioInterface {
     let outputs: Int
 }
 
-/// Petits utilitaires CoreAudio (énumération des interfaces, buffer, fréquence, latence).
+/// Small CoreAudio helpers (interface enumeration, buffer size, sample rate, latency).
 enum HAL {
     static let system = AudioObjectID(kAudioObjectSystemObject)
 
@@ -75,7 +75,7 @@ enum HAL {
         get(system, kAudioHardwarePropertyDefaultOutputDevice, as: AudioDeviceID.self)
     }
 
-    /// Appelle `handler` (thread principal) quand une interface apparaît ou disparaît.
+    /// Calls `handler` (main thread) when an interface appears or disappears.
     static func observeDeviceList(_ handler: @escaping () -> Void) {
         var addr = address(kAudioHardwarePropertyDevices)
         AudioObjectAddPropertyListenerBlock(system, &addr, DispatchQueue.main) { _, _ in handler() }
@@ -100,7 +100,7 @@ enum HAL {
         set(device, kAudioDevicePropertyBufferFrameSize, value: frames)
     }
 
-    // MARK: Fréquence d'échantillonnage
+    // MARK: Sample rate
 
     static let standardRates: [Double] = [44100, 48000, 88200, 96000, 176400, 192000]
 
@@ -117,7 +117,7 @@ enum HAL {
         get(device, kAudioDevicePropertyNominalSampleRate, as: Float64.self)
     }
 
-    /// Change la fréquence et attend (max 1 s) que l'interface l'ait réellement appliquée.
+    /// Changes the sample rate and waits (up to 1 s) for the interface to actually apply it.
     static func setSampleRate(_ device: AudioDeviceID, _ rate: Double) {
         guard sampleRate(device) != rate else { return }
         set(device, kAudioDevicePropertyNominalSampleRate, value: Float64(rate))
@@ -127,9 +127,9 @@ enum HAL {
         }
     }
 
-    // MARK: Latence
+    // MARK: Latency
 
-    /// Latence aller-retour approximative en millisecondes (entrée + sortie + 2 buffers).
+    /// Approximate round-trip latency in milliseconds (input + output + 2 buffers).
     static func roundTripMilliseconds(_ device: AudioDeviceID) -> Double? {
         guard let rate = sampleRate(device), rate > 0, let buffer = bufferFrames(device) else { return nil }
         func fixed(_ scope: AudioObjectPropertyScope) -> UInt32 {
