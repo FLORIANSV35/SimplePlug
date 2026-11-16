@@ -21,6 +21,12 @@ final class HostEngine {
     private var pullBlock: AURenderPullInputBlock?
     private var inputList: UnsafeMutableAudioBufferListPointer?
 
+    /// Compteurs de diagnostic (écrits par le thread audio, lus pour debug).
+    struct Stats { var callbacks = 0, inputErrors = 0, pluginErrors = 0
+                   var lastInputError: OSStatus = 0, lastPluginError: OSStatus = 0
+                   var inputPeak: Float = 0, outputPeak: Float = 0, lastFrames: UInt32 = 0 }
+    private(set) var stats = Stats()
+
     // MARK: Plugin
 
     func loadPlugin(_ description: AudioComponentDescription) async throws -> AVAudioUnit {
@@ -43,7 +49,12 @@ final class HostEngine {
             guard let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 2) else {
                 throw HostError("Format audio invalide")
             }
-            if let bus = au.inputBusses.count > 0 ? au.inputBusses[0] : nil { try bus.setFormat(format) }
+            // Les plugins AUv2 arrivent avec le bus d'entrée désactivé : sans ça, ils ne demandent
+            // jamais d'entrée et rendent du silence.
+            if au.inputBusses.count > 0 {
+                au.inputBusses[0].isEnabled = true
+                try au.inputBusses[0].setFormat(format)
+            }
             if let bus = au.outputBusses.count > 0 ? au.outputBusses[0] : nil { try bus.setFormat(format) }
             au.maximumFramesToRender = Self.maxFrames
             try au.allocateRenderResources()
@@ -159,6 +170,17 @@ final class HostEngine {
 
     // MARK: Temps réel
 
+    private static func peak(_ list: UnsafeMutableAudioBufferListPointer) -> Float {
+        var m: Float = 0
+        for b in list {
+            guard let d = b.mData?.assumingMemoryBound(to: Float.self) else { continue }
+            for i in 0..<Int(b.mDataByteSize) / 4 { m = max(m, abs(d[i])) }
+        }
+        return m
+    }
+
+    func resetPeaks() { stats.inputPeak = 0; stats.outputPeak = 0 }
+
     fileprivate func render(flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>,
                             time: UnsafePointer<AudioTimeStamp>,
                             frames: UInt32,
@@ -169,19 +191,31 @@ final class HostEngine {
 
         let out = UnsafeMutableAudioBufferListPointer(output)
         var inFlags = AudioUnitRenderActionFlags()
-        guard AudioUnitRender(unit, &inFlags, time, 1, frames, input.unsafeMutablePointer) == noErr else {
+        stats.callbacks += 1
+        stats.lastFrames = frames
+        let err = AudioUnitRender(unit, &inFlags, time, 1, frames, input.unsafeMutablePointer)
+        guard err == noErr else {
+            stats.inputErrors += 1
+            stats.lastInputError = err
             for b in out { if let d = b.mData { memset(d, 0, bytes) } }
             return noErr
         }
+        stats.inputPeak = max(stats.inputPeak, Self.peak(input))
 
-        if let block = renderBlock, let pull = pullBlock,
-           block(flags, time, frames, 0, output, pull) == noErr {
-            return noErr
+        if let block = renderBlock, let pull = pullBlock {
+            let st = block(flags, time, frames, 0, output, pull)
+            if st == noErr {
+                stats.outputPeak = max(stats.outputPeak, Self.peak(out))
+                return noErr
+            }
+            stats.pluginErrors += 1
+            stats.lastPluginError = st
         }
         // Pas de plugin (ou erreur) : l'entrée passe telle quelle.
         for i in 0..<min(out.count, input.count) {
             if let d = out[i].mData, let s = input[i].mData { memcpy(d, s, bytes) }
         }
+        stats.outputPeak = max(stats.outputPeak, Self.peak(out))
         return noErr
     }
 }
