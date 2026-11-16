@@ -1,3 +1,5 @@
+<p align="center"><img src="../assets/icon-windows.png" width="128" alt="SimplePlug"></p>
+
 # SimplePlug pour Windows
 
 Hôte minimal pour **un seul plugin VST3** (effet) en **2 entrées / 2 sorties**.

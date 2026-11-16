@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 APP="build/SimplePlug.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 swiftc -O -swift-version 5 \
     -target "$(uname -m)-apple-macos12.0" \
@@ -15,6 +15,7 @@ swiftc -O -swift-version 5 \
     -o "$APP/Contents/MacOS/SimplePlug"
 
 cp Info.plist "$APP/Contents/Info.plist"
+cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$APP"
 
 echo "OK → $APP"

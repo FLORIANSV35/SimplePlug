@@ -17,6 +17,7 @@ FetchContent_MakeAvailable(JUCE)
 juce_add_gui_app(SimplePlug
     PRODUCT_NAME "SimplePlug"
     COMPANY_NAME "SimplePlug"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/../assets/icon-windows.png"
     VERSION ${PROJECT_VERSION})
 
 target_sources(SimplePlug PRIVATE

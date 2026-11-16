@@ -1,4 +1,8 @@
+<p align="center"><img src="assets/icon-1024.png" width="160" alt="SimplePlug"></p>
+
 # SimplePlug
+
+*No pads, no helmets… just plugs.*
 
 Hôte minimal pour **un seul plugin AU** (effet) en **2 entrées / 2 sorties**, pour macOS.
 Seuls réglages : interface audio, taille de buffer et fréquence d'échantillonnage.
