@@ -1,0 +1,318 @@
+import AVFoundation
+import AppKit
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private let engine = HostEngine()
+    private let defaults = UserDefaults.standard
+
+    private var window: NSWindow!
+    private let devicePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let bufferPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let ratePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let pluginPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let latencyLabel = NSTextField(labelWithString: "")
+    private let statusLabel = NSTextField(labelWithString: "")
+    private let pluginContainer = NSView()
+    private var containerWidth: NSLayoutConstraint!
+    private var containerHeight: NSLayoutConstraint!
+    private var content: NSStackView!
+
+    private var interfaces: [AudioInterface] = []
+    private var components: [AVAudioUnitComponent] = []
+    private var pluginKey: String?
+    private var micDenied = false
+
+    private enum Key {
+        static let device = "deviceUID", buffer = "bufferFrames", rate = "sampleRate", plugin = "pluginKey"
+        static func state(_ plugin: String) -> String { "pluginState." + plugin }
+    }
+
+    // MARK: Démarrage
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        buildMenu()
+        buildWindow()
+        refreshInterfaces()
+        refreshPlugins()
+        HAL.observeDeviceList { [weak self] in self?.devicesChanged() }
+
+        Task {
+            micDenied = !(await AVCaptureDevice.requestAccess(for: .audio))
+            restartAudio()
+            let saved = defaults.string(forKey: Key.plugin)
+            if let comp = components.first(where: { Self.key($0) == saved }) {
+                pluginPopup.selectItem(withTitle: Self.title(comp))
+                await loadPlugin(comp)
+            }
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        savePluginState()
+        engine.stop()
+    }
+
+    // MARK: Fenêtre
+
+    private func buildMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        main.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quitter SimplePlug", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        NSApp.mainMenu = main
+    }
+
+    private func label(_ text: String) -> NSTextField {
+        let l = NSTextField(labelWithString: text)
+        l.alignment = .right
+        return l
+    }
+
+    private func buildWindow() {
+        for popup in [devicePopup, bufferPopup, ratePopup, pluginPopup] {
+            popup.target = self
+        }
+        devicePopup.action = #selector(deviceSelected)
+        bufferPopup.action = #selector(settingsSelected)
+        ratePopup.action = #selector(settingsSelected)
+        pluginPopup.action = #selector(pluginSelected)
+        devicePopup.widthAnchor.constraint(greaterThanOrEqualToConstant: 340).isActive = true
+        pluginPopup.widthAnchor.constraint(greaterThanOrEqualToConstant: 340).isActive = true
+
+        latencyLabel.textColor = .secondaryLabelColor
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.lineBreakMode = .byTruncatingTail
+
+        let bufferRow = NSStackView(views: [bufferPopup, latencyLabel])
+        bufferRow.spacing = 12
+
+        let grid = NSGridView(views: [
+            [label("Interface audio"), devicePopup],
+            [label("Buffer"), bufferRow],
+            [label("Fréquence"), ratePopup],
+            [label("Plugin AU"), pluginPopup],
+        ])
+        grid.columnSpacing = 10
+        grid.rowSpacing = 8
+        grid.column(at: 0).xPlacement = .trailing
+
+        containerWidth = pluginContainer.widthAnchor.constraint(equalToConstant: 0)
+        containerHeight = pluginContainer.heightAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([containerWidth, containerHeight])
+        pluginContainer.isHidden = true
+
+        let separator = NSBox()
+        separator.boxType = .separator
+
+        content = NSStackView(views: [grid, statusLabel, separator, pluginContainer])
+        content.orientation = .vertical
+        content.alignment = .leading
+        content.spacing = 12
+        content.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        separator.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -32).isActive = true
+
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 220),
+                          styleMask: [.titled, .closable, .miniaturizable],
+                          backing: .buffered, defer: false)
+        window.title = "SimplePlug"
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.contentView = content
+        fitWindow()
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func fitWindow() {
+        content.layoutSubtreeIfNeeded()
+        window.setContentSize(content.fittingSize)
+    }
+
+    // MARK: Interfaces / buffer / fréquence
+
+    private var selectedInterface: AudioInterface? {
+        interfaces.first { $0.uid == devicePopup.selectedItem?.representedObject as? String }
+    }
+
+    private func refreshInterfaces() {
+        interfaces = HAL.interfaces()
+        devicePopup.removeAllItems()
+        for i in interfaces {
+            devicePopup.addItem(withTitle: "\(i.name)  (\(i.inputs) in / \(i.outputs) out)")
+            devicePopup.lastItem?.representedObject = i.uid
+        }
+        let wanted = defaults.string(forKey: Key.device)
+            ?? HAL.defaultOutputDevice().flatMap { id in interfaces.first { $0.id == id }?.uid }
+        if let idx = interfaces.firstIndex(where: { $0.uid == wanted }) {
+            devicePopup.selectItem(at: idx)
+        }
+        devicePopup.isEnabled = !interfaces.isEmpty
+        refreshDeviceSettings()
+    }
+
+    private func refreshDeviceSettings() {
+        bufferPopup.removeAllItems()
+        ratePopup.removeAllItems()
+        guard let device = selectedInterface?.id else { return }
+
+        let buffers = HAL.availableBuffers(device)
+        for b in buffers {
+            bufferPopup.addItem(withTitle: "\(b) échantillons")
+            bufferPopup.lastItem?.tag = Int(b)
+        }
+        let savedBuffer = defaults.integer(forKey: Key.buffer)
+        let currentBuffer = Int(HAL.bufferFrames(device) ?? 256)
+        bufferPopup.selectItem(withTag: buffers.contains(UInt32(savedBuffer)) ? savedBuffer : currentBuffer)
+        if bufferPopup.selectedItem == nil { bufferPopup.selectItem(at: 0) }
+
+        let rates = HAL.availableRates(device)
+        for r in rates {
+            ratePopup.addItem(withTitle: String(format: "%g kHz", r / 1000))
+            ratePopup.lastItem?.tag = Int(r)
+        }
+        let savedRate = defaults.integer(forKey: Key.rate)
+        let currentRate = Int(HAL.sampleRate(device) ?? 48000)
+        ratePopup.selectItem(withTag: rates.contains(Double(savedRate)) ? savedRate : currentRate)
+        if ratePopup.selectedItem == nil { ratePopup.selectItem(at: 0) }
+    }
+
+    private func devicesChanged() {
+        let before = selectedInterface?.uid
+        refreshInterfaces()
+        if selectedInterface?.uid != before || !engine.isRunning { restartAudio() }
+    }
+
+    @objc private func deviceSelected() {
+        defaults.set(selectedInterface?.uid, forKey: Key.device)
+        refreshDeviceSettings()
+        restartAudio()
+    }
+
+    @objc private func settingsSelected() {
+        defaults.set(bufferPopup.selectedItem?.tag, forKey: Key.buffer)
+        defaults.set(ratePopup.selectedItem?.tag, forKey: Key.rate)
+        restartAudio()
+    }
+
+    private func restartAudio() {
+        guard let interface = selectedInterface else {
+            engine.stop()
+            latencyLabel.stringValue = ""
+            setStatus("Aucune interface audio 2 entrées / 2 sorties détectée.", error: true)
+            return
+        }
+        let buffer = UInt32(bufferPopup.selectedItem?.tag ?? 256)
+        let rate = Double(ratePopup.selectedItem?.tag ?? 48000)
+        do {
+            try engine.start(device: interface.id, bufferFrames: buffer, sampleRate: rate)
+            if let ms = HAL.roundTripMilliseconds(interface.id) {
+                latencyLabel.stringValue = String(format: "latence ≈ %.1f ms", ms)
+            }
+            if micDenied {
+                setStatus("Accès à l'entrée audio refusé : Réglages Système › Confidentialité › Microphone.", error: true)
+            } else {
+                setStatus("En marche — entrées 1-2 → plugin → sorties 1-2", error: false)
+            }
+        } catch {
+            latencyLabel.stringValue = ""
+            setStatus(error.localizedDescription, error: true)
+        }
+    }
+
+    private func setStatus(_ text: String, error: Bool) {
+        statusLabel.stringValue = (error ? "⚠︎ " : "● ") + text
+        statusLabel.textColor = error ? .systemRed : .secondaryLabelColor
+        statusLabel.toolTip = text
+    }
+
+    // MARK: Plugin
+
+    private static func key(_ c: AVAudioUnitComponent) -> String {
+        let d = c.audioComponentDescription
+        return "\(d.componentType)-\(d.componentSubType)-\(d.componentManufacturer)"
+    }
+
+    private static func title(_ c: AVAudioUnitComponent) -> String {
+        c.name.contains(c.manufacturerName) ? c.name : "\(c.manufacturerName): \(c.name)"
+    }
+
+    private func refreshPlugins() {
+        var desc = AudioComponentDescription(componentType: kAudioUnitType_Effect, componentSubType: 0,
+                                             componentManufacturer: 0, componentFlags: 0, componentFlagsMask: 0)
+        components = AVAudioUnitComponentManager.shared().components(matching: desc)
+            .sorted { Self.title($0).localizedCaseInsensitiveCompare(Self.title($1)) == .orderedAscending }
+        desc.componentType = 0
+        pluginPopup.removeAllItems()
+        pluginPopup.addItem(withTitle: "Aucun (signal direct)")
+        pluginPopup.menu?.addItem(.separator())
+        for c in components { pluginPopup.addItem(withTitle: Self.title(c)) }
+    }
+
+    @objc private func pluginSelected() {
+        let index = pluginPopup.indexOfSelectedItem - 2
+        let component = components.indices.contains(index) ? components[index] : nil
+        defaults.set(component.map(Self.key), forKey: Key.plugin)
+        Task { await loadPlugin(component) }
+    }
+
+    private func loadPlugin(_ component: AVAudioUnitComponent?) async {
+        pluginPopup.isEnabled = false
+        defer { pluginPopup.isEnabled = true }
+
+        savePluginState()
+        engine.stop()
+        pluginContainer.subviews.forEach { $0.removeFromSuperview() }
+        pluginContainer.isHidden = true
+        pluginKey = nil
+        engine.unloadPlugin()
+        fitWindow()
+
+        if let component {
+            setStatus("Chargement de « \(component.name) »…", error: false)
+            do {
+                let unit = try await engine.loadPlugin(component.audioComponentDescription)
+                pluginKey = Self.key(component)
+                if let data = defaults.data(forKey: Key.state(pluginKey!)),
+                   let state = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
+                    unit.auAudioUnit.fullState = state
+                }
+                show(await PluginView.make(for: unit))
+            } catch {
+                setStatus("Impossible de charger le plugin : \(error.localizedDescription)", error: true)
+                return
+            }
+        }
+        restartAudio()
+    }
+
+    private func show(_ view: NSView) {
+        let size = view.frame.size == .zero ? NSSize(width: 400, height: 200) : view.frame.size
+        let width = max(size.width, 480 - 32)
+        containerWidth.constant = width
+        containerHeight.constant = size.height
+        view.translatesAutoresizingMaskIntoConstraints = true
+        view.autoresizingMask = [.minXMargin, .maxXMargin]
+        view.frame = NSRect(x: (width - size.width) / 2, y: 0, width: size.width, height: size.height)
+        pluginContainer.addSubview(view)
+        pluginContainer.isHidden = false
+        fitWindow()
+    }
+
+    private func savePluginState() {
+        guard let key = pluginKey, let state = engine.plugin?.auAudioUnit.fullState,
+              let data = try? PropertyListSerialization.data(fromPropertyList: state, format: .binary, options: 0) else { return }
+        defaults.set(data, forKey: Key.state(key))
+    }
+}
+
+let app = NSApplication.shared
+let delegate = MainActor.assumeIsolated { AppDelegate() }
+app.delegate = delegate
+app.setActivationPolicy(.regular)
+app.run()
